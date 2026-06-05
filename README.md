@@ -26,8 +26,8 @@ Ten projekt zawiera kompleksowy skrypt w powłoce Bash (`install.sh`), przeznacz
 
 1. Sklonuj repozytorium na swój dysk:
    ```bash
-   git clone <URL_TWOJEGO_REPOZYTORIUM>
-   cd <NAZWA_FOLDERU>
+   git clone https://github.com/bartko4321/arch-config.git
+   cd arch-config
    ```
 
 2. Nadaj skryptowi uprawnienia do wykonywania:
