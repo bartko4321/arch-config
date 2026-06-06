@@ -38,11 +38,11 @@ Ten projekt zawiera kompleksowy skrypt w powłoce Bash (`install.sh`), przeznacz
 3. Uruchom skrypt (bez `sudo`!):
    ```bash
    ./install.sh
+   uruchamienie w chroot sudo -u /home/nazwa-użytkownika/kde-config-kde/install.sh
    ```
 
 4. Skrypt poprosi Cię o:
-   * Hasło `sudo` (aby nadać sobie tymczasowe uprawnienia na czas instalacji).
-   * Opcjonalnie: SSID i hasło do sieci Wi-Fi (możesz pominąć wciskając Enter).
+   * Hasło `sudo` (aby nadać sobie tymczasowe uprawnienia na czas instalacji)
 
 Po zakończeniu działania skrypt **automatycznie zrestartuje komputer**.
 
