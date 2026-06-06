@@ -92,18 +92,6 @@ fi
 
 
 # =============================================================
-#  2. KONFIGURACJA WI-FI
-# =============================================================
-log_info "Konfiguracja Wi-Fi"
-read -rp "Podaj SSID (nazwę sieci, Enter by pominąć): " wifi_ssid
-if [ -n "$wifi_ssid" ]; then
-    read -rsp "Podaj hasło: " wifi_pass
-    echo ""
-    nmcli dev wifi connect "$wifi_ssid" password "$wifi_pass" || log_warn "Nie udało się połączyć z Wi-Fi."
-fi
-
-
-# =============================================================
 #  3. KONFIGURACJA SYSTEMOWA (wymaga sudo)
 # =============================================================
 log_info "Rozpoczynanie konfiguracji systemowej"
