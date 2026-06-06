@@ -38,7 +38,7 @@ Ten projekt zawiera kompleksowy skrypt w powłoce Bash (`install.sh`), przeznacz
 3. Uruchom skrypt (bez `sudo`!):
    ```bash
    ./install.sh
-   uruchamienie w chroot sudo -u /home/nazwa-użytkownika/kde-config-kde/install.sh
+   uruchamienie w chroot sudo -u nazwa-użytkownika /home/nazwa-użytkownika/kde-config-kde/install.sh
    ```
 
 4. Skrypt poprosi Cię o:
