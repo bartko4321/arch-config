@@ -63,6 +63,8 @@ Skrypt sprawdza obecność i kopiuje dodatkowe pliki, jeśli znajdują się w ty
 
 * Wsparcie numer konta: 06291000060000000005038936
 
+*  Jeśli projekt Ci się podoba, zostaw gwiazdkę! ⭐
+
 ## 🛑 Ważna uwaga (Disclaimer)
 
 Ten skrypt modyfikuje krytyczne pliki systemowe (takie jak `/etc/pacman.conf`, `/etc/mkinitcpio.conf`, ustawienia GRUB). Upewnij się, że przeczytałeś i rozumiesz, co robi kod, przed jego uruchomieniem. Projekt jest dostarczany "tak jak jest" (as-is), bez żadnej gwarancji.
