@@ -61,6 +61,8 @@ Skrypt sprawdza obecność i kopiuje dodatkowe pliki, jeśli znajdują się w ty
 * `Konserwacja systemu.desktop` – plik skrótu na pulpit/do menu.
 * Folder `bleachbit/` – prekonfigurowane ustawienia dla programu BleachBit.
 
+* Wsparcie numer konta: 06291000060000000005038936
+
 ## 🛑 Ważna uwaga (Disclaimer)
 
 Ten skrypt modyfikuje krytyczne pliki systemowe (takie jak `/etc/pacman.conf`, `/etc/mkinitcpio.conf`, ustawienia GRUB). Upewnij się, że przeczytałeś i rozumiesz, co robi kod, przed jego uruchomieniem. Projekt jest dostarczany "tak jak jest" (as-is), bez żadnej gwarancji.
