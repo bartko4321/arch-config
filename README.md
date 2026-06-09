@@ -1,74 +1,78 @@
-# 🐧 Arch Linux – Skrypt Poinstalacyjny i Konfiguracyjny
+# 🐧 Arch Linux – Post-Installation & Configuration Script
 
-Ten projekt zawiera kompleksowy skrypt w powłoce Bash (`install.sh`), przeznaczony do automatyzacji konfiguracji systemu Arch Linux tuż po jego instalacji. Skrypt instaluje niezbędne pakiety, optymalizuje menedżera pakietów, konfiguruje środowisko użytkownika oraz automatycznie dostosowuje usługi systemowe i bootloader do posiadanego sprzętu.
+This project contains a comprehensive Bash shell script (`install.sh`) designed to automate the configuration of an Arch Linux system right after installation. The script installs essential packages, optimizes the package manager, sets up the user environment, and automatically adjusts system services and the bootloader to match your hardware.
 
-## 🚀 Główne funkcje
+## 🚀 Key Features
 
-* **Wykrywanie sprzętu (GPU):** Automatycznie rozpoznaje kartę graficzną (NVIDIA, AMD, Intel) i instaluje dedykowane 32-bitowe biblioteki (m.in. Vulkan) oraz ładuje odpowiednie moduły do wczesnego startu jądra (Early KMS).
-* **Zarządzanie pakietami:**
-  * Instaluje szeroką listę aplikacji systemowych, deweloperskich, multimedialnych i gamingowych za pomocą `pacman`.
-  * Automatycznie instaluje narzędzie `yay` do obsługi repozytorium AUR i instaluje z niego wybrane pakiety (np. Google Chrome, Brave, Ventoy).
-  * Konfiguruje integrację z **Flathub**.
-  * Usuwa predefiniowaną listę zbędnych pakietów (bloatware).
-* **Optymalizacja `pacman.conf`:** Włącza równoległe pobieranie (ParallelDownloads), kolorowanie składni (`ILoveCandy`) oraz blokuje pobieranie zbędnych plików językowych (zostawia tylko PL i EN) i dokumentacji w celu oszczędzania miejsca.
-* **Bootloader i Plymouth:** Konfiguruje bezgłośny start systemu (`quiet splash`, ukrycie menu GRUB/systemd-boot) oraz ekran ładowania Plymouth.
-* **Środowisko terminala:** Zmienia domyślną powłokę na **ZSH**, instaluje framework **Oh My Zsh** oraz motyw **Powerlevel10k**, dodając `fastfetch` na starcie.
-* **Prywatność i sieć:** Wymusza korzystanie z bezpiecznych serwerów DNS od Cloudflare (1.1.1.1).
-* **Usługi i bezpieczeństwo:** Konfiguruje zaporę sieciową (UFW) i włącza kluczowe usługi systemowe (Bluetooth, fstrim, libvirt/KVM).
+* **Hardware Detection (GPU):** Automatically detects your graphics card (NVIDIA, AMD, Intel) and installs the appropriate 32-bit libraries (including Vulkan) and loads the correct modules for Early KMS.
+* **Package Management:**
+  * Installs a wide selection of system, development, multimedia, and gaming applications via `pacman`.
+  * Automatically installs `yay` for AUR support and uses it to install selected packages (e.g. Google Chrome, Brave, Ventoy).
+  * Configures **Flathub** integration.
+  * Removes a predefined list of unnecessary packages (bloatware).
+* **`pacman.conf` Optimization:** Enables parallel downloads (`ParallelDownloads`), syntax coloring (`ILoveCandy`), and blocks unnecessary locale files (keeping only PL and EN) and documentation to save disk space.
+* **Bootloader & Plymouth:** Configures a silent boot (`quiet splash`, hidden GRUB/systemd-boot menu) and a Plymouth splash screen.
+* **Terminal Environment:** Changes the default shell to **ZSH**, installs the **Oh My Zsh** framework and the **Powerlevel10k** theme, and adds `fastfetch` on startup.
+* **Privacy & Networking:** Forces the use of Cloudflare's secure DNS servers (1.1.1.1).
+* **Services & Security:** Configures the firewall (UFW) and enables key system services (Bluetooth, fstrim, libvirt/KVM).
 
-## ⚠️ Wymagania wstępne
+## ⚠️ Prerequisites
 
-1. Świeża instalacja systemu **Arch Linux**.
-2. Skonfigurowane sudo (skrypt **nie może** być uruchamiany jako root, musisz uruchomić go jako zwykły użytkownik posiadający uprawnienia do `sudo`).
-3. Dostęp do Internetu.
+1. A fresh **Arch Linux** installation.
+2. `sudo` configured — the script **must not** be run as root; run it as a regular user with `sudo` privileges.
+3. An active internet connection.
 
-## 💻 Instalacja i użycie
+## 💻 Installation & Usage
 
-1. Sklonuj repozytorium na swój dysk
+1. Clone the repository to your disk
    ```bash
    git clone https://github.com/bartko4321/arch-config.git
    ```
-   
-2. Przejdź do folderu
+
+2. Navigate to the folder
    ```bash
    cd arch-config
    ```
 
-3. Nadaj skryptowi uprawnienia do wykonywania
+3. Make the script executable
    ```bash
    chmod +x install.sh
    ```
 
-4. Uruchom skrypt (bez `sudo`!)
+4. Run the script (without `sudo`!)
    ```bash
    ./install.sh
-
-5. Uruchamienie w chroot
-   ```bash
-   sudo -u nazwa-użytkownika /home/nazwa-użytkownika/kde-config-kde/install.sh
    ```
 
-Po zakończeniu działania skrypt **automatycznie zrestartuje komputer**.
+5. Running inside a chroot
+   ```bash
+   sudo -u username /home/username/kde-config-kde/install.sh
+   ```
 
-## 🛠 Konfiguracja i modyfikacja
+6. The script will prompt you for:
+   * Your `sudo` password (to temporarily elevate privileges during installation)
 
-Skrypt został napisany tak, aby łatwo było go dostosować do własnych potrzeb. Otwórz `install.sh` w dowolnym edytorze tekstu, aby:
-* Zmodyfikować listę pakietów do odinstalowania w sekcji `PACKAGES_TO_REMOVE`.
-* Dodać/usunąć oficjalne pakiety w tablicy `SYSTEM_PKGS`.
-* Dodać/usunąć pakiety z AUR w tablicy `AUR_PKGS`.
-* Zmienić domyślne usługi (np. deaktywować UFW czy libvirt).
+Once finished, the script will **automatically reboot your computer**.
 
-## 📁 Struktura opcjonalnych plików
+## 🛠 Configuration & Customization
 
-Skrypt sprawdza obecność i kopiuje dodatkowe pliki, jeśli znajdują się w tym samym katalogu:
-* `.update.sh` – opcjonalny skrypt aktualizacyjny użytkownika.
-* `Konserwacja systemu.desktop` – plik skrótu na pulpit/do menu.
-* Folder `bleachbit/` – prekonfigurowane ustawienia dla programu BleachBit.
+The script is written to be easily tailored to your needs. Open `install.sh` in any text editor to:
+* Modify the list of packages to remove in the `PACKAGES_TO_REMOVE` section.
+* Add/remove official packages in the `SYSTEM_PKGS` array.
+* Add/remove AUR packages in the `AUR_PKGS` array.
+* Change default services (e.g. disable UFW or libvirt).
 
-* Wsparcie numer konta: 06291000060000000005038936
+## 📁 Optional File Structure
 
-*  Jeśli projekt Ci się podoba, zostaw gwiazdkę! ⭐
+The script checks for and copies additional files if they are present in the same directory:
+* `.update.sh` – an optional user update script.
+* `System Maintenance.desktop` – a desktop/menu shortcut file.
+* `bleachbit/` folder – pre-configured settings for BleachBit.
 
-## 🛑 Ważna uwaga (Disclaimer)
+* Support account number: 06291000060000000005038936
 
-Ten skrypt modyfikuje krytyczne pliki systemowe (takie jak `/etc/pacman.conf`, `/etc/mkinitcpio.conf`, ustawienia GRUB). Upewnij się, że przeczytałeś i rozumiesz, co robi kod, przed jego uruchomieniem. Projekt jest dostarczany "tak jak jest" (as-is), bez żadnej gwarancji.
+* If you find this project useful, leave a star! ⭐
+
+## 🛑 Important Notice (Disclaimer)
+
+This script modifies critical system files (such as `/etc/pacman.conf`, `/etc/mkinitcpio.conf`, GRUB settings). Make sure you have read and understand what the code does before running it. The project is provided "as-is", without any warranty.
