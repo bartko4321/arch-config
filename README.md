@@ -48,9 +48,6 @@ Ten projekt zawiera kompleksowy skrypt w powłoce Bash (`install.sh`), przeznacz
    sudo -u nazwa-użytkownika /home/nazwa-użytkownika/kde-config-kde/install.sh
    ```
 
-7. Skrypt poprosi Cię o:
-   * Hasło `sudo` (aby nadać sobie tymczasowe uprawnienia na czas instalacji)
-
 Po zakończeniu działania skrypt **automatycznie zrestartuje komputer**.
 
 ## 🛠 Konfiguracja i modyfikacja
