@@ -49,9 +49,6 @@ This project contains a comprehensive Bash shell script (`install.sh`) designed 
    sudo -u username /home/username/kde-config-kde/install.sh
    ```
 
-6. The script will prompt you for:
-   * Your `sudo` password (to temporarily elevate privileges during installation)
-
 Once finished, the script will **automatically reboot your computer**.
 
 ## 🛠 Configuration & Customization
