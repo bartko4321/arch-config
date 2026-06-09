@@ -27,21 +27,28 @@ Ten projekt zawiera kompleksowy skrypt w powłoce Bash (`install.sh`), przeznacz
 1. Sklonuj repozytorium na swój dysk:
    ```bash
    git clone https://github.com/bartko4321/arch-config.git
+   ```
+   
+2. Przejdź do folderu:
+   ```bash
    cd arch-config
    ```
 
-2. Nadaj skryptowi uprawnienia do wykonywania:
+3. Nadaj skryptowi uprawnienia do wykonywania:
    ```bash
    chmod +x install.sh
    ```
 
-3. Uruchom skrypt (bez `sudo`!):
+4. Uruchom skrypt (bez `sudo`!):
    ```bash
    ./install.sh
-   uruchamienie w chroot sudo -u nazwa-użytkownika /home/nazwa-użytkownika/kde-config-kde/install.sh
+
+5. Uruchamienie w chroot:
+   ```bash
+   sudo -u nazwa-użytkownika /home/nazwa-użytkownika/kde-config-kde/install.sh
    ```
 
-4. Skrypt poprosi Cię o:
+7. Skrypt poprosi Cię o:
    * Hasło `sudo` (aby nadać sobie tymczasowe uprawnienia na czas instalacji)
 
 Po zakończeniu działania skrypt **automatycznie zrestartuje komputer**.
