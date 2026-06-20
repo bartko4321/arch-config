@@ -1,0 +1,42 @@
+```yaml
+name: Synchronizacja do SourceForge
+
+# 1. KIEDY URUCHOMIĆ AKCJĘ?
+on:
+  push:
+    branches: [ main ] # Uruchom, gdy pojawią się nowe commity w gałęzi 'main'
+
+jobs:
+  sync-repo:
+    runs-on: ubuntu-latest # Uruchom na świeżej maszynie z systemem Linux
+
+    steps:
+    # KROK 1: Pobranie kodu z repozytorium GitHub na maszynę wirtualną
+    - name: Pobieranie kodu z GitHub
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # Pobiera całą historię (potrzebne, by poprawnie przesłać gałęzie)
+
+    # KROK 2: Konfiguracja klucza SSH na maszynie wirtualnej
+    - name: Konfiguracja klucza SSH
+      uses: shimataro/ssh-key-action@v2
+      with:
+        key: ${{ secrets.SF_SSH_KEY }} # Wyciąga nasz ukryty klucz z Secrets
+        name: id_ed25519
+        known_hosts: 'dummy-value' # Zostanie nadpisane poniżej
+        if_key_exists: replace
+
+    # KROK 3: Dodanie SourceForge do zaufanych serwerów, aby SSH nie pytało "czy na pewno chcesz się połączyć"
+    - name: Dodawanie SourceForge do Known Hosts
+      run: |
+        ssh-keyscan git.code.sf.net >> ~/.ssh/known_hosts
+
+    # KROK 4: Wypchnięcie kodu na SourceForge
+    - name: Push kodu do SourceForge
+      run: |
+        # UWAGA: Podmień poniższy adres na SWÓJ adres SSH z SourceForge!
+        # Wygląda on zazwyczaj tak: ssh://TWÓJ_LOGIN@git.code.sf.net/p/NAZWA_PROJEKTU/KOD
+        git remote add sf ssh://bartko5321@git.code.sf.net/p/arch-config-kde/code arch-config-kde-code
+
+        # Wypchnięcie gałęzi main na SourceForge (parametr --force gwarantuje idealną synchronizację)
+        git push sf main --force
