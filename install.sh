@@ -157,42 +157,38 @@ log_info "Instalacja pakietów systemowych"
 sudo pacman -Sy --noconfirm
 
 SYSTEM_PKGS=(
-    # Podstawa i narzędzia deweloperskie
+    # System i narzędzia
     base-devel git zsh pacman-contrib btop fastfetch reflector
     gcc make cmake meson ninja just
     python-pip python-tqdm python-defusedxml python-packaging
+    spectacle gwenview okular ark
 
     # Zarządzanie systemem i dyskami
     partitionmanager bleachbit unrar mc btrfs-progs exfat-utils ntfs-3g os-prober
     fsarchiver inxi pv rsync 7zip zenity innoextract android-tools dnsmasq vde2
 
-    # Pakiety Flatpak
-    flatpak
+    # Narzędzia wizualne i systemowe
+    plymouth profile-sync-daemon ananicy-cpp dconf-editor geoclue fwupd fwupd-efi
+    bluez-obex appmenu-gtk-module libayatana-appindicator flatpak
 
     # Multimedia i grafika
     vlc vlc-plugins-all libappimage
-    gimp krita gmic qmmp
-    audacity mixxx kdenlive
+    krita krita-plugin-gmic gimp gmic
+    audacity qmmp mixxx kdenlive
     gst-plugins-good gst-plugins-bad gst-plugins-ugly
 
-    # Komunikatory i P2P
+    # Komunikatory i sieć
     discord telegram-desktop qbittorrent
 
     # Biuro
     libreoffice-fresh libreoffice-fresh-pl hunspell-pl
 
-    # WINE i Gaming
+    # WINE, Gaming i Wirtualizacja
     wine-staging winetricks gamemode gamescope mangohud goverlay vkd3d
     vulkan-dzn vulkan-gfxstream vulkan-swrast
-
-    # Narzędzia wizualne i systemowe
-    plymouth profile-sync-daemon ananicy-cpp dconf-editor geoclue fwupd fwupd-efi
-    bluez-obex appmenu-gtk-module
-
-    # Wirtualizacja
     virt-manager qemu-desktop libvirt edk2-ovmf
 
-    # Biblioteki 32-bit (zoptymalizowane - usunięto duplikaty)
+    # Biblioteki 32-bit (zoptymalizowane - bez duplikatów)
     lib32-mpg123 lib32-libvdpau lib32-libtheora lib32-speex
     lib32-libxrandr lib32-libxrender lib32-gamemode
     lib32-vulkan-swrast lib32-vkd3d lib32-alsa-plugins
@@ -347,7 +343,7 @@ sudo usermod -aG libvirt,kvm "$CURRENT_USER"
 
 
 # =============================================================
-#  8. KONFIGURACJA UŻYTKOWNIKA (ZSH, AUR)
+#  8. KONFIGURACJA ZSH
 # =============================================================
 
 # ── ZSH + Oh My Zsh + Powerlevel10k ──────────────────────────
@@ -378,9 +374,12 @@ if command -v zsh &>/dev/null; then
     fi
 fi
 
-# ── YAY (AUR helper) ──────────────────────────────────────────
-log_info "Instalacja yay"
-if ! command -v yay &> /dev/null; then
+# =============================================================
+#  9. YAY (AUR HELPER) I PAKIETY AUR
+# =============================================================
+log_info "Instalacja yay i pakietów AUR..."
+
+if ! command -v yay &>/dev/null; then
     rm -rf /tmp/yay
     git clone https://aur.archlinux.org/yay.git /tmp/yay
     (cd /tmp/yay && makepkg -si --noconfirm)
@@ -388,21 +387,7 @@ fi
 
 yay --save --cleanafter --cleanmenu=false --diffmenu=false --editmenu=false
 
-# ── Pakiety AUR ───────────────────────────────────────────────
-log_info "Instalacja pakietów z AUR"
-
-AUR_PKGS=(
-    ventoy-bin
-    lsfg-vk-bin
-    google-chrome
-    brave-bin
-    faugus-launcher
-    shelly-bin
-    dmemcg-booster
-    needrestart
-    makeself
-)
-
+AUR_PKGS=(ventoy-bin lsfg-vk-bin google-chrome brave-bin faugus-launcher shelly-bin dmemcg-booster needrestart makeself)
 install_yay_pkgs "${AUR_PKGS[@]}"
 
 # ── Usunięcie tymczasowego wyjątku sudo ───────────────────────
