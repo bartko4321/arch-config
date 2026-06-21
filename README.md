@@ -46,7 +46,7 @@ This project contains a comprehensive Bash shell script (`install.sh`) designed 
 
 5. Running inside a chroot
    ```bash
-   sudo -u username /home/username/kde-config-kde/install.sh
+   sudo -u username /home/username/arch-config/install.sh
    ```
 
 Once finished, the script will **automatically reboot your computer**.
