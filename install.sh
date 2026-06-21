@@ -161,7 +161,7 @@ SYSTEM_PKGS=(
     base-devel git zsh pacman-contrib btop fastfetch reflector
     gcc make cmake meson ninja just
     python-pip python-tqdm python-defusedxml python-packaging
-    spectacle gwenview okular ark
+    gwenview okular ark
 
     # Zarządzanie systemem i dyskami
     partitionmanager bleachbit unrar mc btrfs-progs exfat-utils ntfs-3g os-prober
