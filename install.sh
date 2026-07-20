@@ -171,7 +171,7 @@ SYSTEM_PKGS=(
     # Narzędzia wizualne i systemowe
     plymouth profile-sync-daemon ananicy-cpp dconf-editor geoclue fwupd fwupd-efi
     bluez-obex appmenu-gtk-module libayatana-appindicator flatpak timeshift
-    thunderbird thunderbird-i18n-pl resources zsh-syntax-highlighting zsh-autosuggestions
+    thunderbird thunderbird-i18n-pl zsh-syntax-highlighting zsh-autosuggestions
 
     # Multimedia i grafika
     vlc vlc-plugins-all libappimage
