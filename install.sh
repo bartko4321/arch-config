@@ -166,7 +166,7 @@ SYSTEM_PKGS=(
 
     # Zarządzanie systemem i dyskami
     partitionmanager bleachbit unrar mc btrfs-progs exfat-utils ntfs-3g os-prober
-    fsarchiver inxi pv rsync 7zip zenity innoextract android-tools dnsmasq vde2 flatseal cdemu-client
+    fsarchiver inxi pv rsync 7zip zenity innoextract android-tools dnsmasq vde2 flatseal cdemu-client cdemu-daemon vhba-module
 
     # Narzędzia wizualne i systemowe
     plymouth profile-sync-daemon ananicy-cpp dconf-editor geoclue fwupd fwupd-efi
