@@ -101,7 +101,7 @@ sudo -v
 echo "$CURRENT_USER ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/99-temp-installer > /dev/null
 
 # ── Usuwanie niechcianych pakietów ────────────────────────────
-PACKAGES_TO_REMOVE="htop nano plasma-browser-integration plasma-vault konqueror krdp krfb plasma-thunderbolt gnome-software epiphany decibels rhythmbox showtime cosmic-store cosmic-player parole"
+PACKAGES_TO_REMOVE="htop nano konqueror plasma-browser-integration plasma-vault krdp krfb plasma-thunderbolt kontact kmail kontrast plasma-welcome imagemagick kaddressbook kdepim-runtime akonadi-server akregator korganizer gnome-software epiphany decibels rhythmbox showtime cosmic-store cosmic-player parole"
 
 INSTALLED_PACKAGES=$(pacman -Qq $PACKAGES_TO_REMOVE 2>/dev/null || true)
 
