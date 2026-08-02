@@ -174,9 +174,9 @@ SYSTEM_PKGS=(
     thunderbird thunderbird-i18n-pl zsh-syntax-highlighting zsh-autosuggestions
 
     # Multimedia i grafika
-    vlc vlc-plugins-all libappimage
+    vlc vlc-plugins-all libappimage handbrake
     krita krita-plugin-gmic gimp gmic
-    audacity qmmp mixxx kdenlive
+    audacity qmmp mixxx kdenlive soundconverter
     gst-plugins-good gst-plugins-bad gst-plugins-ugly
 
     # Komunikatory i sieć
