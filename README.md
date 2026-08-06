@@ -46,7 +46,7 @@ This project contains a comprehensive Bash shell script (`install.sh`) designed 
 
 5. Running inside a chroot
    ```bash
-   sudo -u username /home/username/arch-config/install.sh
+   sudo -u username ./install.sh
    ```
 
 Once finished, the script will **automatically reboot your computer**.
