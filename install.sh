@@ -166,7 +166,7 @@ SYSTEM_PKGS=(
 
     # Zarządzanie systemem i dyskami
     partitionmanager bleachbit unrar mc btrfs-progs exfat-utils ntfs-3g os-prober
-    fsarchiver inxi pv rsync 7zip zenity innoextract android-tools dnsmasq vde2 flatseal cdemu-client cdemu-daemon vhba-module
+    fsarchiver inxi pv rsync 7zip zenity innoextract android-tools dnsmasq vde2 cdemu-client cdemu-daemon vhba-module
 
     # Narzędzia wizualne i systemowe
     plymouth profile-sync-daemon ananicy-cpp dconf-editor geoclue fwupd fwupd-efi
@@ -220,6 +220,15 @@ install_pacman_pkgs "${SYSTEM_PKGS[@]}"
 # Dodanie repozytorium Flathub
 log_info "Konfiguracja repozytorium Flathub"
 sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+
+# Aplikacje Flatpak (Flathub)
+log_info "Instalacja Flatseal i Gear Lever z Flathub"
+sudo flatpak install -y flathub com.github.tchx84.Flatseal \
+    && log_ok "Zainstalowano Flatseal" \
+    || log_warn "Błąd instalacji Flatseal"
+sudo flatpak install -y flathub it.mijorus.gearlever \
+    && log_ok "Zainstalowano Gear Lever" \
+    || log_warn "Błąd instalacji Gear Lever"
 
 
 # =============================================================
