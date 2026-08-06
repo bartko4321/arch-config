@@ -180,7 +180,7 @@ SYSTEM_PKGS=(
     gst-plugins-good gst-plugins-bad gst-plugins-ugly
 
     # Komunikatory i sieć
-    discord telegram-desktop qbittorrent firefox-developer-edition
+    discord telegram-desktop qbittorrent firefox-developer-edition firefox-developer-edition-i18n-pl
 
     # Biuro
     libreoffice-fresh libreoffice-fresh-pl hunspell-pl
