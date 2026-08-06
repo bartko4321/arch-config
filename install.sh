@@ -101,7 +101,7 @@ sudo -v
 echo "$CURRENT_USER ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/99-temp-installer > /dev/null
 
 # ── Usuwanie niechcianych pakietów ────────────────────────────
-PACKAGES_TO_REMOVE="htop nano konqueror plasma-browser-integration plasma-vault krdp krfb plasma-thunderbolt kontact kmail kontrast plasma-welcome imagemagick kaddressbook kdepim-runtime akonadi-server akregator korganizer gnome-software epiphany decibels rhythmbox showtime cosmic-store cosmic-player parole"
+PACKAGES_TO_REMOVE="htop nano konqueror plasma-browser-integration plasma-vault krdp krfb plasma-thunderbolt kontact kmail kontrast plasma-welcome imagemagick kaddressbook kdepim-runtime akonadi-server akregator korganizer gnome-software epiphany decibels rhythmbox showtime cosmic-store cosmic-player parole kwalletmanager"
 
 INSTALLED_PACKAGES=$(pacman -Qq $PACKAGES_TO_REMOVE 2>/dev/null || true)
 
@@ -109,6 +109,24 @@ if [ -n "$INSTALLED_PACKAGES" ]; then
     # shellcheck disable=SC2086
     sudo pacman -Rs --noconfirm $INSTALLED_PACKAGES 2>/dev/null || true
 fi
+
+# --- Wyłączenie KDE Wallet (Portfela) ---
+log_info "Wyłączanie usługi KDE Wallet..."
+mkdir -p ~/.config
+if [[ -f ~/.config/kwalletrc ]]; then
+    if grep -q "^\[Wallet\]" ~/.config/kwalletrc; then
+        sed -i '/^\[Wallet\]/,/^\[/{s/^Enabled=.*/Enabled=false/}' ~/.config/kwalletrc
+        grep -q "^Enabled=" ~/.config/kwalletrc || sed -i '/^\[Wallet\]/a Enabled=false' ~/.config/kwalletrc
+    else
+        printf '[Wallet]\nEnabled=false\n' >> ~/.config/kwalletrc
+    fi
+else
+    printf '[Wallet]\nEnabled=false\n' > ~/.config/kwalletrc
+fi
+systemctl --user mask kwalletd5.service kwalletd6.service 2>/dev/null || true
+systemctl --user stop kwalletd5.service kwalletd6.service 2>/dev/null || true
+killall -q kwalletd5 kwalletd6 2>/dev/null || true
+log_ok "KDE Wallet wyłączony."
 
 # ── Optymalizacja pacmana ─────────────────────────────────────
 log_info "Optymalizacja /etc/pacman.conf..."
