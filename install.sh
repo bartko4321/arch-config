@@ -221,6 +221,9 @@ install_pacman_pkgs "${SYSTEM_PKGS[@]}"
 log_info "Konfiguracja repozytorium Flathub"
 sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 
+log_info "Odświeżanie metadanych Flathub..."
+sudo flatpak update --appstream
+
 # Aplikacje Flatpak (Flathub)
 log_info "Instalacja Flatseal i Gear Lever z Flathub"
 sudo flatpak install -y flathub com.github.tchx84.Flatseal \
