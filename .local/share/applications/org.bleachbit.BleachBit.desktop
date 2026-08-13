@@ -1,0 +1,22 @@
+[Desktop Entry]
+Categories=System;Utility
+Comment=Zwolnij miejsce na dysku i zachowaj prywatność
+Exec=kdesu bleachbit
+GenericName[pl_PL]=Program czyszczący niepotrzebne pliki
+GenericName=Unnecessary file cleaner
+Icon=bleachbit
+Keywords=cache;clean;free;performance;privacy;
+Name=BleachBit
+NoDisplay=false
+Path=
+PrefersNonDefaultGPU=false
+StartupNotify=true
+StartupWMClass=bleachbit
+Terminal=false
+TerminalOptions=
+TryExec=bleachbit
+Type=Application
+Version=1.1
+X-GNOME-UsesNotifications=true
+X-KDE-SubstituteUID=false
+X-KDE-Username=
