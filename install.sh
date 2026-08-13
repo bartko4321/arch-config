@@ -450,5 +450,3 @@ install_yay_pkgs "${AUR_PKGS[@]}"
 sudo rm -f /etc/sudoers.d/99-temp-installer
 
 log_ok "KONFIGURACJA ZAKOŃCZONA SUKCESEM!"
-sleep 3
-systemctl reboot
