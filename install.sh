@@ -450,3 +450,22 @@ install_yay_pkgs "${AUR_PKGS[@]}"
 sudo rm -f /etc/sudoers.d/99-temp-installer
 
 log_ok "KONFIGURACJA ZAKOŃCZONA SUKCESEM!"
+
+# =============================================================
+#  10. RESTART SYSTEMU
+# =============================================================
+read -rp "$(echo -e "${INFO}==> Czy chcesz teraz zrestartować system? [Y/N]: ${NC}")" RESTART_CHOICE
+case "$RESTART_CHOICE" in
+    [Yy]*)
+        log_info "Restartowanie systemu..."
+        sudo reboot
+        ;;
+    [Nn]*)
+        log_warn "Pominięto restart. Pamiętaj, aby zrestartować system później, aby zmiany zostały zastosowane."
+        exit 0
+        ;;
+    *)
+        log_warn "Nieprawidłowy wybór. Pominięto restart. Pamiętaj, aby zrestartować system później, aby zmiany zostały zastosowane."
+        exit 0
+        ;;
+esac
