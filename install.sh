@@ -276,38 +276,62 @@ show_progress 8 $TOTAL_STEPS "$MSG_PHASE_2"
 # =============================================================
 show_progress 9 $TOTAL_STEPS "$MSG_PHASE_3"
 
-# Bootloader & Kernel cmdline
+# ── Bootloader & Kernel cmdline (auto-detekcja) ────────────────
+# Wykrywa i konfiguruje dowolną kombinację: UKI, systemd-boot, GRUB.
+# Uwaga: sprawdzamy obecność samego "splash" (grep -w), a nie literalnego
+# "quiet splash" — inaczej wpis z samym "quiet" (bez splash) był pomijany
+# i splash nigdy nie zostawał dopisany.
 CMDLINE="quiet splash"
 [[ $GPU_TYPE == *"nvidia"* ]] && CMDLINE="$CMDLINE nvidia_drm.modeset=1"
 
-if [ -f /etc/kernel/cmdline ]; then
-    if ! grep -q "quiet splash" /etc/kernel/cmdline; then
-        sudo sed -i "s/$/ $CMDLINE/" /etc/kernel/cmdline
-        sudo sed -i 's/  */ /g'      /etc/kernel/cmdline
+BOOT_METHODS_FOUND=()
+
+# --- UKI (Unified Kernel Image) ---
+# mkinitcpio buduje UKI gdy preset (/etc/mkinitcpio.d/*.preset) ma klucz
+# *_uki=, albo gdy istnieją już gotowe obrazy w /boot/EFI/Linux/*.efi.
+# Cmdline dla UKI bierze się z /etc/kernel/cmdline i jest wypiekany
+# w obraz dopiero przy przebudowie (mkinitcpio -P, dalej w skrypcie).
+if [ -f /etc/kernel/cmdline ] && \
+   { grep -rlq '_uki=' /etc/mkinitcpio.d/*.preset 2>/dev/null || \
+     compgen -G "/boot/EFI/Linux/*.efi" > /dev/null 2>&1; }; then
+    BOOT_METHODS_FOUND+=("uki")
+    if ! grep -qw "splash" /etc/kernel/cmdline; then
+        sudo sed -i "s/\$/ $CMDLINE/" /etc/kernel/cmdline
+        sudo sed -i 's/  */ /g'       /etc/kernel/cmdline
     fi
 fi
 
-for loader_root in "/boot" "/efi"; do
-    if [ -d "$loader_root/loader/entries" ]; then
-        [ -f "$loader_root/loader/loader.conf" ] && \
-            sudo sed -i 's/^timeout .*/timeout 0/' "$loader_root/loader/loader.conf"
+# --- systemd-boot ---
+if command -v bootctl &>/dev/null && \
+   { [ -f /boot/loader/loader.conf ] || [ -f /efi/loader/loader.conf ]; }; then
+    BOOT_METHODS_FOUND+=("systemd-boot")
+    for loader_root in "/boot" "/efi"; do
+        if [ -d "$loader_root/loader/entries" ]; then
+            [ -f "$loader_root/loader/loader.conf" ] && \
+                sudo sed -i 's/^timeout .*/timeout 0/' "$loader_root/loader/loader.conf"
 
-        for entry in "$loader_root/loader/entries/"*.conf; do
-            if [ -f "$entry" ] && ! grep -q "quiet splash" "$entry"; then
-                sudo sed -i "/^options/ s/$/ $CMDLINE/" "$entry"
-                sudo sed -i 's/  */ /g' "$entry"
-            fi
-        done
-    fi
-done
+            for entry in "$loader_root/loader/entries/"*.conf; do
+                [ -f "$entry" ] || continue
+                if ! grep -qw "splash" "$entry"; then
+                    sudo sed -i "/^options/ s/\$/ $CMDLINE/" "$entry"
+                    sudo sed -i 's/  */ /g' "$entry"
+                fi
+            done
+        fi
+    done
+fi
 
-if [ -f /etc/default/grub ]; then
+# --- GRUB ---
+if [ -f /etc/default/grub ] && command -v grub-mkconfig &>/dev/null; then
+    BOOT_METHODS_FOUND+=("grub")
     sudo sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=0/' /etc/default/grub
     sudo sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"$CMDLINE\"|" \
         /etc/default/grub
     sudo grub-mkconfig -o /boot/grub/grub.cfg 2>/dev/null || \
     sudo grub-mkconfig -o /boot/GRUB/grub.cfg 2>/dev/null || true
 fi
+
+
 
 show_progress 10 $TOTAL_STEPS "$MSG_PHASE_3"
 
