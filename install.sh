@@ -318,13 +318,9 @@ log_info "Odświeżanie metadanych Flathub..." \
 sudo flatpak update --appstream
 
 # Aplikacje Flatpak (Flathub)
-log_info "Instalacja Flatseal i Gear Lever z Flathub" \
-         "Installing Flatseal and Gear Lever from Flathub"
 sudo flatpak install -y flathub com.github.tchx84.Flatseal \
-    && log_ok "Zainstalowano Flatseal" "Installed Flatseal" \
     || log_warn "Błąd instalacji Flatseal" "Error installing Flatseal"
 sudo flatpak install -y flathub it.mijorus.gearlever \
-    && log_ok "Zainstalowano Gear Lever" "Installed Gear Lever" \
     || log_warn "Błąd instalacji Gear Lever" "Error installing Gear Lever"
 
 
@@ -457,8 +453,6 @@ sudo journalctl --vacuum-time=2d || true
 if [ -d "$SCRIPT_DIR/bleachbit" ]; then
     sudo mkdir -p /root/.config/bleachbit
     sudo cp -af "$SCRIPT_DIR/bleachbit/." /root/.config/bleachbit/
-    log_ok "Skopiowano konfigurację BleachBit" \
-           "Copied BleachBit configuration"
 else
     log_warn "Folder $SCRIPT_DIR/bleachbit nie istnieje – pominięto" \
              "Folder $SCRIPT_DIR/bleachbit does not exist – skipped"
