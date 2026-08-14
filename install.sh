@@ -536,7 +536,7 @@ else
     RESTART_PROMPT="Do you want to restart the system now? [Y/N]: "
 fi
 echo -en "${INFO}==> ${RESTART_PROMPT}${NC}" >&3
-read -r RESTART_CHOICE
+read -r RESTART_CHOICE < /dev/tty
 case "$RESTART_CHOICE" in
     [Yy]*)
         log_info "Restartowanie systemu..." "Restarting the system..."
