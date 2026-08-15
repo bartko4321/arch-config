@@ -5,7 +5,6 @@
 
 set -euo pipefail
 
-# ── Wykrywanie języka systemu ──────────────────────────────────
 detect_system_lang() {
     local sys_lang="${LANG:-}"
     [[ -z "$sys_lang" ]] && sys_lang="${LC_ALL:-${LC_MESSAGES:-}}"
@@ -17,31 +16,23 @@ detect_system_lang() {
 }
 SCRIPT_LANG="$(detect_system_lang)"
 
-# ── Kolory ────────────────────────────────────────────────────
 INFO='\033[0;34m'
 SUCCESS='\033[0;32m'
 WARN='\033[0;33m'
 ERR='\033[0;31m'
 NC='\033[0m'
 
-# ── System logowania i ukrywanie komunikatów ──────────────────
 TMP_LOG="$(mktemp /tmp/install-log.XXXXXX)"
 LOG_FILE="$HOME/install_error_$(date +%Y%m%d_%H%M%S).log"
 
-# fd 3 = terminal (używany WYŁĄCZNIE dla paska postępu i pytania końcowego)
-# Wszystkie standardowe komendy i logi (stdout/stderr) lądują w tle w pliku tymczasowym.
 exec 3>&1
 exec >>"$TMP_LOG" 2>&1
 
-# Wyłączamy zawijanie linii w terminalu na czas działania skryptu.
-# Bez tego zbyt długa linia paska postępu (pasek + komunikat) zawija się
-# na dwa wiersze terminala, a \r\033[K czyści tylko ten, na którym stoi
-# kursor — w efekcie na ekranie zostają "resztki" poprzedniego komunikatu.
 printf '\033[?7l' >&3
 
 cleanup_on_exit() {
     local exit_code=$?
-    printf '\033[?7h' >&3   # z powrotem włączamy zawijanie linii
+    printf '\033[?7h' >&3
     if [ "$exit_code" -ne 0 ]; then
         echo -e "\n" >&3
         cp -f "$TMP_LOG" "$LOG_FILE" 2>/dev/null || true
@@ -55,36 +46,27 @@ cleanup_on_exit() {
 }
 trap cleanup_on_exit EXIT
 
-# Funkcje logujące w tle (do pliku tymczasowego)
 _pick_msg() { [[ "$SCRIPT_LANG" == "pl" ]] && echo "$1" || echo "$2"; }
-log_info()  { local m; m="$(_pick_msg "$1" "$2")"; echo -e "${INFO}==> $m${NC}"; }
 log_ok()    { local m; m="$(_pick_msg "$1" "$2")"; echo -e "${SUCCESS}✔ $m${NC}"; }
 log_error() { local m; m="$(_pick_msg "$1" "$2")"; echo -e "${ERR}✘ $m${NC}"; }
-log_warn()  { local m; m="$(_pick_msg "$1" "$2")"; echo -e "${WARN}⚠ $m${NC}"; }
 
-# ── Funkcja rysująca pasek postępu ─────────────────────────────
 show_progress() {
     local step=$1
     local total=$2
     local msg=$3
     local percent=$(( step * 100 / total ))
 
-    # Szerokość terminala (fallback 80, gdyby tput się nie powiódł)
     local cols
     cols=$(tput cols 2>/dev/null)
     [[ "$cols" =~ ^[0-9]+$ ]] || cols=80
 
-    # Pasek ma maks. 50 znaków, ale kurczy się, jeśli terminal jest węższy.
     local bar_width=50
-    local reserved=12   # "[" + "]" + " 100% | " + margines bezpieczeństwa
+    local reserved=12
     if (( cols - reserved < bar_width )); then
         bar_width=$(( cols - reserved ))
         (( bar_width < 10 )) && bar_width=10
     fi
 
-    # Komunikat obcinamy tak, by cała linia zmieściła się w jednym wierszu
-    # terminala — dzięki temu \r\033[K zawsze czyści CAŁĄ poprzednią treść,
-    # zamiast zostawiać resztki po zawiniętej linii.
     local overhead=$(( bar_width + reserved ))
     local avail=$(( cols - overhead ))
     if (( avail < 5 )); then avail=5; fi
@@ -103,7 +85,6 @@ show_progress() {
     printf "\r\033[K[\033[1;32m%s\033[0;90m%s\033[0m] %3d%% | \033[1;36m%s\033[0m" "$bar_filled" "$bar_empty" "$percent" "$msg" >&3
 }
 
-# ── 3 GŁÓWNE KOMUNIKATY ────────────────────────────────────────
 if [[ "$SCRIPT_LANG" == "pl" ]]; then
     MSG_PHASE_1="[1/3] Konfiguracja i optymalizacja systemu..."
     MSG_PHASE_2="[2/3] Instalacja pakietów systemowych, Flatpak i AUR..."
@@ -116,7 +97,6 @@ fi
 
 TOTAL_STEPS=12
 
-# Sprawdzenie uprawnień
 if [[ "$EUID" -eq 0 ]]; then
     echo -e "${ERR}✘ Nie uruchamiaj skryptu jako root. Uruchom jako zwykły użytkownik z sudo.${NC}" >&3
     exit 1
@@ -132,8 +112,6 @@ install_pacman_pkgs() {
     for pkg in "$@"; do
         if pacman -Si "$pkg" &>/dev/null; then
             valid_pkgs+=("$pkg")
-        else
-            log_warn "Pomijam pakiet: $pkg" "Skipping package: $pkg"
         fi
     done
     if [ ${#valid_pkgs[@]} -gt 0 ]; then
@@ -146,8 +124,6 @@ install_yay_pkgs() {
     for pkg in "$@"; do
         if yay -Si "$pkg" &>/dev/null; then
             valid_pkgs+=("$pkg")
-        else
-            log_warn "Pomijam pakiet z AUR: $pkg" "Skipping AUR package: $pkg"
         fi
     done
     if [ ${#valid_pkgs[@]} -gt 0 ]; then
@@ -186,18 +162,15 @@ fi
 
 show_progress 1 $TOTAL_STEPS "$MSG_PHASE_1"
 
-# Tymczasowy wyjątek sudo dla pacmana
 sudo -v
 echo "$CURRENT_USER ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/99-temp-installer > /dev/null
 
-# Usuwanie niechcianych pakietów
 PACKAGES_TO_REMOVE="htop nano konqueror plasma-browser-integration plasma-vault krdp krfb plasma-thunderbolt kontact kmail kontrast plasma-welcome imagemagick kaddressbook kdepim-runtime akonadi-server akregator korganizer gnome-software epiphany decibels rhythmbox showtime cosmic-store cosmic-player parole kwalletmanager"
 INSTALLED_PACKAGES=$(pacman -Qq $PACKAGES_TO_REMOVE 2>/dev/null || true)
 if [ -n "$INSTALLED_PACKAGES" ]; then
     sudo pacman -Rs --noconfirm $INSTALLED_PACKAGES 2>/dev/null || true
 fi
 
-# Wyłączenie KDE Wallet
 mkdir -p ~/.config
 if [[ -f ~/.config/kwalletrc ]]; then
     if grep -q "^\[Wallet\]" ~/.config/kwalletrc; then
@@ -212,7 +185,6 @@ fi
 
 show_progress 2 $TOTAL_STEPS "$MSG_PHASE_1"
 
-# Optymalizacja pacmana
 sudo sed -i 's/^#[[:space:]]*Color/Color/' /etc/pacman.conf
 if ! grep -qw "ILoveCandy" /etc/pacman.conf; then
     sudo sed -i '/^Color/a ILoveCandy' /etc/pacman.conf
@@ -222,7 +194,6 @@ sudo sed -i 's/^#[[:space:]]*ParallelDownloads.*/ParallelDownloads = 10/' /etc/p
 sudo sed -i 's/^ParallelDownloads.*/ParallelDownloads = 10/' /etc/pacman.conf
 sudo sed -i 's/^#[[:space:]]*VerbosePkgLists/VerbosePkgLists/' /etc/pacman.conf
 
-# NoExtract
 if ! grep -q "NoExtract = usr/share/locale" /etc/pacman.conf; then
     sudo sed -i '/^\[options\]/a NoExtract = usr/share/locale/* !usr/share/locale/pl* !usr/share/locale/en*\nNoExtract = usr/share/cups/doc/*' /etc/pacman.conf
 fi
@@ -231,7 +202,6 @@ if ! grep -q "NoExtract = usr/share/man" /etc/pacman.conf; then
 fi
 sudo pacman -S --noconfirm cups
 
-# DNS CLOUDFLARE
 sudo mkdir -p /etc/NetworkManager/conf.d
 echo -e "[main]\ndns=default\nrc-manager=symlink" | sudo tee /etc/NetworkManager/conf.d/dns.conf > /dev/null
 echo -e "[global-dns]\n\n[global-dns-domain-*]\nservers=1.1.1.1,1.0.0.1,2606:4700:4700::1112,2606:4700:4700::1002" | sudo tee /etc/NetworkManager/conf.d/global-dns.conf > /dev/null
@@ -280,7 +250,6 @@ install_pacman_pkgs "${SYSTEM_PKGS[@]}"
 
 show_progress 6 $TOTAL_STEPS "$MSG_PHASE_2"
 
-# Flatpak
 sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 sudo flatpak update --appstream
 sudo flatpak install -y flathub com.github.tchx84.Flatseal || true
@@ -288,7 +257,6 @@ sudo flatpak install -y flathub it.mijorus.gearlever || true
 
 show_progress 7 $TOTAL_STEPS "$MSG_PHASE_2"
 
-# YAY & AUR
 if ! command -v yay &>/dev/null; then
     rm -rf /tmp/yay
     git clone https://aur.archlinux.org/yay.git /tmp/yay
@@ -307,21 +275,11 @@ show_progress 8 $TOTAL_STEPS "$MSG_PHASE_2"
 # =============================================================
 show_progress 9 $TOTAL_STEPS "$MSG_PHASE_3"
 
-# ── Bootloader & Kernel cmdline (auto-detekcja) ────────────────
-# Wykrywa i konfiguruje dowolną kombinację: UKI, systemd-boot, GRUB.
-# Uwaga: sprawdzamy obecność samego "splash" (grep -w), a nie literalnego
-# "quiet splash" — inaczej wpis z samym "quiet" (bez splash) był pomijany
-# i splash nigdy nie zostawał dopisany.
 CMDLINE="quiet splash"
 [[ $GPU_TYPE == *"nvidia"* ]] && CMDLINE="$CMDLINE nvidia_drm.modeset=1"
 
 BOOT_METHODS_FOUND=()
 
-# --- UKI (Unified Kernel Image) ---
-# mkinitcpio buduje UKI gdy preset (/etc/mkinitcpio.d/*.preset) ma klucz
-# *_uki=, albo gdy istnieją już gotowe obrazy w /boot/EFI/Linux/*.efi.
-# Cmdline dla UKI bierze się z /etc/kernel/cmdline i jest wypiekany
-# w obraz dopiero przy przebudowie (mkinitcpio -P, dalej w skrypcie).
 if [ -f /etc/kernel/cmdline ] && \
    { grep -rlq '_uki=' /etc/mkinitcpio.d/*.preset 2>/dev/null || \
      compgen -G "/boot/EFI/Linux/*.efi" > /dev/null 2>&1; }; then
@@ -332,7 +290,6 @@ if [ -f /etc/kernel/cmdline ] && \
     fi
 fi
 
-# --- systemd-boot ---
 if command -v bootctl &>/dev/null && \
    { [ -f /boot/loader/loader.conf ] || [ -f /efi/loader/loader.conf ]; }; then
     BOOT_METHODS_FOUND+=("systemd-boot")
@@ -352,7 +309,6 @@ if command -v bootctl &>/dev/null && \
     done
 fi
 
-# --- GRUB ---
 if [ -f /etc/default/grub ] && command -v grub-mkconfig &>/dev/null; then
     BOOT_METHODS_FOUND+=("grub")
     sudo sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=0/' /etc/default/grub
@@ -362,68 +318,8 @@ if [ -f /etc/default/grub ] && command -v grub-mkconfig &>/dev/null; then
     sudo grub-mkconfig -o /boot/GRUB/grub.cfg 2>/dev/null || true
 fi
 
-# --- Limine ---
-# Obsługujemy oba formaty konfiguracji: nowy TOML-podobny (limine >= 5.x,
-# klucze "timeout:"/"cmdline:") oraz stary INI-podobny (klucze
-# "TIMEOUT="/"CMDLINE="). Każdą linię z cmdline sprawdzamy osobno pod kątem
-# obecności "splash", tak jak przy wpisach systemd-boot.
-for limine_conf in /boot/limine.conf /boot/EFI/limine/limine.conf \
-                   /efi/limine.conf /efi/EFI/limine/limine.conf \
-                   /boot/limine.cfg /boot/EFI/limine/limine.cfg; do
-    if [ -f "$limine_conf" ]; then
-        BOOT_METHODS_FOUND+=("limine")
-        if grep -q "^[[:space:]]*cmdline:" "$limine_conf" 2>/dev/null; then
-            # Nowy format
-            sudo sed -i 's/^timeout:.*/timeout: 0/' "$limine_conf"
-            while IFS= read -r line_no; do
-                if ! sudo sed -n "${line_no}p" "$limine_conf" | grep -qw "splash"; then
-                    sudo sed -i "${line_no}s/\$/ $CMDLINE/" "$limine_conf"
-                    sudo sed -i "${line_no}s/  */ /g" "$limine_conf"
-                fi
-            done < <(grep -n "^[[:space:]]*cmdline:" "$limine_conf" | cut -d: -f1)
-        else
-            # Stary format
-            sudo sed -i 's/^TIMEOUT=.*/TIMEOUT=0/' "$limine_conf"
-            while IFS= read -r line_no; do
-                if ! sudo sed -n "${line_no}p" "$limine_conf" | grep -qw "splash"; then
-                    sudo sed -i "${line_no}s/\$/ $CMDLINE/" "$limine_conf"
-                    sudo sed -i "${line_no}s/  */ /g" "$limine_conf"
-                fi
-            done < <(grep -n "^[[:space:]]*CMDLINE=" "$limine_conf" | cut -d: -f1)
-        fi
-        break
-    fi
-done
-
-# --- rEFInd ---
-# refind.conf odpowiada za timeout menu, natomiast kernel cmdline dla
-# poszczególnych jąder rEFInd czyta z osobnego pliku refind_linux.conf
-# (para "etykieta" "opcje" w cudzysłowach, może być kilka linii/wpisów).
-for refind_conf in /boot/EFI/refind/refind.conf /efi/EFI/refind/refind.conf; do
-    if [ -f "$refind_conf" ]; then
-        BOOT_METHODS_FOUND+=("refind")
-        sudo sed -i 's/^timeout .*/timeout 0/' "$refind_conf"
-        break
-    fi
-done
-
-for refind_linux_conf in /boot/refind_linux.conf /efi/refind_linux.conf; do
-    if [ -f "$refind_linux_conf" ]; then
-        [[ " ${BOOT_METHODS_FOUND[*]} " == *" refind "* ]] || BOOT_METHODS_FOUND+=("refind")
-        while IFS= read -r line_no; do
-            if ! sudo sed -n "${line_no}p" "$refind_linux_conf" | grep -qw "splash"; then
-                sudo sed -i "${line_no}s/\"\$/ $CMDLINE\"/" "$refind_linux_conf"
-                sudo sed -i "${line_no}s/  */ /g" "$refind_linux_conf"
-            fi
-        done < <(grep -n '^".*"[[:space:]]*".*"$' "$refind_linux_conf" | cut -d: -f1)
-    fi
-done
-
-
-
 show_progress 10 $TOTAL_STEPS "$MSG_PHASE_3"
 
-# Plymouth & Early KMS
 sudo plymouth-set-default-theme -R bgrt 2>/dev/null || true
 
 if [[ $GPU_TYPE == *"nvidia"* ]]; then
@@ -449,7 +345,6 @@ sudo mkinitcpio -P
 
 show_progress 11 $TOTAL_STEPS "$MSG_PHASE_3"
 
-# Usługi, Firewall, Optymalizacja
 if [ -f /etc/default/ufw ]; then
     sudo sed -i 's/DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
 fi
@@ -486,7 +381,6 @@ fi
 
 sudo usermod -aG libvirt,kvm "$CURRENT_USER"
 
-# Konfiguracja ZSH
 if command -v zsh &>/dev/null; then
     sudo chsh -s /usr/bin/zsh "$CURRENT_USER"
 
@@ -521,10 +415,8 @@ if command -v zsh &>/dev/null; then
     fi
 fi
 
-# Usunięcie tymczasowego wyjątku sudo
 sudo rm -f /etc/sudoers.d/99-temp-installer
 
-# Zakończenie paska postępu (100%)
 show_progress 12 $TOTAL_STEPS "$MSG_PHASE_3"
 echo -e "\n" >&3
 
