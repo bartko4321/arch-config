@@ -135,6 +135,24 @@ install_yay_pkgs() {
     fi
 }
 
+# Ponawia polecenie sieciowe do $1 razy z rosnącym opóźnieniem - przydatne przy
+# tymczasowych zrywkach TLS/DNS (np. "TLS connect error: unexpected eof").
+retry_cmd() {
+    local attempts="$1"; shift
+    local delay=3
+    local n=1
+    until "$@"; do
+        if (( n >= attempts )); then
+            return 1
+        fi
+        log_warn "Próba $n/$attempts nieudana, ponawiam za ${delay}s..." \
+                 "Attempt $n/$attempts failed, retrying in ${delay}s..."
+        sleep "$delay"
+        delay=$(( delay * 2 ))
+        n=$(( n + 1 ))
+    done
+}
+
 CURRENT_USER=$(whoami)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -289,6 +307,13 @@ fi
 
 install_pacman_pkgs "${SYSTEM_PKGS[@]}"
 
+# vhba-module/cdemu-daemon próbują od razu załadować moduł jądra dla AKTUALNIE
+# uruchomionego jądra. Jeśli "pacman -Syu" wyżej zaktualizował pakiet jądra,
+# moduł trafia do katalogu NOWEGO jądra, a system wciąż działa na starym - stąd
+# nieszkodliwy w tym momencie błąd "modprobe: FATAL: Module vhba not found...".
+# Moduł załaduje się poprawnie po restarcie na końcu skryptu.
+sudo depmod -a &>/dev/null || true
+
 show_progress 6 $TOTAL_STEPS "$MSG_PHASE_2"
 
 sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
@@ -299,8 +324,26 @@ sudo flatpak install -y flathub it.mijorus.gearlever || true
 show_progress 7 $TOTAL_STEPS "$MSG_PHASE_2"
 
 if ! command -v yay &>/dev/null; then
+    # Świeżo zainstalowany system czasem ma nieskorygowany zegar, co bywa
+    # przyczyną błędów TLS przy pierwszym kontakcie z aur.archlinux.org
+    sudo timedatectl set-ntp true &>/dev/null || true
+
     rm -rf /tmp/yay
-    git clone https://aur.archlinux.org/yay.git /tmp/yay
+    if ! retry_cmd 5 git clone https://aur.archlinux.org/yay.git /tmp/yay; then
+        log_warn "Klonowanie przez git nie powiodło się, próbuję pobrać archiwum tar.gz..." \
+                 "git clone failed, trying to download the tar.gz archive instead..."
+        rm -rf /tmp/yay
+        mkdir -p /tmp/yay
+        if ! retry_cmd 5 curl -4 -fsSL \
+            "https://aur.archlinux.org/cgit/aur.git/snapshot/yay.tar.gz" \
+            -o /tmp/yay.tar.gz; then
+            log_err "Nie udało się pobrać yay (git ani curl) po kilku próbach - sprawdź połączenie sieciowe." \
+                     "Failed to download yay (both git and curl) after several attempts - check your network connection."
+            exit 1
+        fi
+        tar -xzf /tmp/yay.tar.gz -C /tmp/yay --strip-components=1
+        rm -f /tmp/yay.tar.gz
+    fi
     (cd /tmp/yay && makepkg -si --noconfirm)
 fi
 
