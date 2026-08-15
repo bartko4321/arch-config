@@ -152,7 +152,7 @@ if command -v lspci &>/dev/null; then
 
     if [ -z "$GPU_INFO" ] || [ "$TOTAL_KNOWN" -eq 0 ]; then
         HYBRID_GPU=false
-        sudo pacman -S --needed --noconfirm lib32-mesa
+        sudo pacman -S --needed --noconfirm lib32-mesa lib32-vulkan-mesa-layers lib32-vulkan-icd-loader
     elif [ "$TOTAL_KNOWN" -ge 2 ]; then
         HYBRID_GPU=true
         GPU_TYPE="$(IFS=+; echo "${GPU_VENDORS[*]}")"
@@ -161,7 +161,7 @@ if command -v lspci &>/dev/null; then
         GPU_TYPE="${GPU_VENDORS[0]}"
     fi
 else
-    sudo pacman -S --needed --noconfirm lib32-mesa
+    sudo pacman -S --needed --noconfirm lib32-mesa lib32-vulkan-mesa-layers lib32-vulkan-icd-loader
 fi
 
 if [ -f "$SCRIPT_DIR/.update.sh" ]; then
