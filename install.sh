@@ -362,6 +362,63 @@ if [ -f /etc/default/grub ] && command -v grub-mkconfig &>/dev/null; then
     sudo grub-mkconfig -o /boot/GRUB/grub.cfg 2>/dev/null || true
 fi
 
+# --- Limine ---
+# Obsługujemy oba formaty konfiguracji: nowy TOML-podobny (limine >= 5.x,
+# klucze "timeout:"/"cmdline:") oraz stary INI-podobny (klucze
+# "TIMEOUT="/"CMDLINE="). Każdą linię z cmdline sprawdzamy osobno pod kątem
+# obecności "splash", tak jak przy wpisach systemd-boot.
+for limine_conf in /boot/limine.conf /boot/EFI/limine/limine.conf \
+                   /efi/limine.conf /efi/EFI/limine/limine.conf \
+                   /boot/limine.cfg /boot/EFI/limine/limine.cfg; do
+    if [ -f "$limine_conf" ]; then
+        BOOT_METHODS_FOUND+=("limine")
+        if grep -q "^[[:space:]]*cmdline:" "$limine_conf" 2>/dev/null; then
+            # Nowy format
+            sudo sed -i 's/^timeout:.*/timeout: 0/' "$limine_conf"
+            while IFS= read -r line_no; do
+                if ! sudo sed -n "${line_no}p" "$limine_conf" | grep -qw "splash"; then
+                    sudo sed -i "${line_no}s/\$/ $CMDLINE/" "$limine_conf"
+                    sudo sed -i "${line_no}s/  */ /g" "$limine_conf"
+                fi
+            done < <(grep -n "^[[:space:]]*cmdline:" "$limine_conf" | cut -d: -f1)
+        else
+            # Stary format
+            sudo sed -i 's/^TIMEOUT=.*/TIMEOUT=0/' "$limine_conf"
+            while IFS= read -r line_no; do
+                if ! sudo sed -n "${line_no}p" "$limine_conf" | grep -qw "splash"; then
+                    sudo sed -i "${line_no}s/\$/ $CMDLINE/" "$limine_conf"
+                    sudo sed -i "${line_no}s/  */ /g" "$limine_conf"
+                fi
+            done < <(grep -n "^[[:space:]]*CMDLINE=" "$limine_conf" | cut -d: -f1)
+        fi
+        break
+    fi
+done
+
+# --- rEFInd ---
+# refind.conf odpowiada za timeout menu, natomiast kernel cmdline dla
+# poszczególnych jąder rEFInd czyta z osobnego pliku refind_linux.conf
+# (para "etykieta" "opcje" w cudzysłowach, może być kilka linii/wpisów).
+for refind_conf in /boot/EFI/refind/refind.conf /efi/EFI/refind/refind.conf; do
+    if [ -f "$refind_conf" ]; then
+        BOOT_METHODS_FOUND+=("refind")
+        sudo sed -i 's/^timeout .*/timeout 0/' "$refind_conf"
+        break
+    fi
+done
+
+for refind_linux_conf in /boot/refind_linux.conf /efi/refind_linux.conf; do
+    if [ -f "$refind_linux_conf" ]; then
+        [[ " ${BOOT_METHODS_FOUND[*]} " == *" refind "* ]] || BOOT_METHODS_FOUND+=("refind")
+        while IFS= read -r line_no; do
+            if ! sudo sed -n "${line_no}p" "$refind_linux_conf" | grep -qw "splash"; then
+                sudo sed -i "${line_no}s/\"\$/ $CMDLINE\"/" "$refind_linux_conf"
+                sudo sed -i "${line_no}s/  */ /g" "$refind_linux_conf"
+            fi
+        done < <(grep -n '^".*"[[:space:]]*".*"$' "$refind_linux_conf" | cut -d: -f1)
+    fi
+done
+
 
 
 show_progress 10 $TOTAL_STEPS "$MSG_PHASE_3"
