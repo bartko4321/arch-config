@@ -8,7 +8,7 @@ set -euo pipefail
 detect_system_lang() {
     local sys_lang="${LANG:-}"
     [[ -z "$sys_lang" ]] && sys_lang="${LC_ALL:-${LC_MESSAGES:-}}"
-    if [[ "$sys_lang" == pl_PL* || "$sys_lang" == pl* ]]; then
+    if [[ "$sys_lang" == pl* ]]; then
         echo "pl"
     else
         echo "en"
@@ -167,7 +167,17 @@ fi
 show_progress 1 $TOTAL_STEPS "$MSG_PHASE_1"
 
 sudo -v
-echo "$CURRENT_USER ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/99-temp-installer > /dev/null
+SUDOERS_TMP="$(mktemp)"
+echo "$CURRENT_USER ALL=(ALL) NOPASSWD: ALL" > "$SUDOERS_TMP"
+chmod 0440 "$SUDOERS_TMP"
+if sudo visudo -cf "$SUDOERS_TMP" &>/dev/null; then
+    sudo install -m 0440 -o root -g root "$SUDOERS_TMP" /etc/sudoers.d/99-temp-installer
+else
+    rm -f "$SUDOERS_TMP"
+    echo -e "${ERR}✘ Nieprawidłowa składnia pliku sudoers – przerywam.${NC}" >&3
+    exit 1
+fi
+rm -f "$SUDOERS_TMP"
 
 PACKAGES_TO_REMOVE="htop nano konqueror plasma-browser-integration plasma-vault krdp krfb plasma-thunderbolt kontact kmail kontrast plasma-welcome imagemagick kaddressbook kdepim-runtime akonadi-server akregator korganizer gnome-software epiphany decibels rhythmbox showtime cosmic-store cosmic-player parole kwalletmanager"
 INSTALLED_PACKAGES=$(pacman -Qq $PACKAGES_TO_REMOVE 2>/dev/null || true)
@@ -178,8 +188,12 @@ fi
 mkdir -p ~/.config
 if [[ -f ~/.config/kwalletrc ]]; then
     if grep -q "^\[Wallet\]" ~/.config/kwalletrc; then
+        # Wyciągamy TYLKO sekcję [Wallet], żeby sprawdzić czy zawiera własną linię Enabled=
+        WALLET_SECTION="$(awk '/^\[Wallet\]/{f=1;next} /^\[/{f=0} f' ~/.config/kwalletrc)"
         sed -i '/^\[Wallet\]/,/^\[/{s/^Enabled=.*/Enabled=false/}' ~/.config/kwalletrc
-        grep -q "^Enabled=" ~/.config/kwalletrc || sed -i '/^\[Wallet\]/a Enabled=false' ~/.config/kwalletrc
+        if ! echo "$WALLET_SECTION" | grep -q "^Enabled="; then
+            sed -i '/^\[Wallet\]/a Enabled=false' ~/.config/kwalletrc
+        fi
     else
         printf '[Wallet]\nEnabled=false\n' >> ~/.config/kwalletrc
     fi
@@ -320,20 +334,31 @@ if [ -f /etc/default/grub ] && command -v grub-mkconfig &>/dev/null; then
     sudo sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=0/' /etc/default/grub
     sudo sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"$CMDLINE\"|" \
         /etc/default/grub
-    sudo grub-mkconfig -o /boot/grub/grub.cfg 2>/dev/null || \
-    sudo grub-mkconfig -o /boot/GRUB/grub.cfg 2>/dev/null || true
+    sudo grub-mkconfig -o /boot/grub/grub.cfg 2>/dev/null || true
 fi
 
 show_progress 10 $TOTAL_STEPS "$MSG_PHASE_3"
 
+if [ ${#BOOT_METHODS_FOUND[@]} -gt 0 ]; then
+    METHODS_JOINED="$(IFS=', '; echo "${BOOT_METHODS_FOUND[*]}")"
+    if [[ "$SCRIPT_LANG" == "pl" ]]; then
+        echo -e "${INFO}==> Wykryte i skonfigurowane metody rozruchu: ${METHODS_JOINED}${NC}" >&3
+    else
+        echo -e "${INFO}==> Detected and configured boot methods: ${METHODS_JOINED}${NC}" >&3
+    fi
+fi
+
 sudo plymouth-set-default-theme -R bgrt 2>/dev/null || true
 
 if [[ $GPU_TYPE == *"nvidia"* ]]; then
-    sudo sed -i 's/^MODULES=(/MODULES=(nvidia nvidia_modeset nvidia_uvm nvidia_drm /' /etc/mkinitcpio.conf
+    grep -q "nvidia_drm" /etc/mkinitcpio.conf || \
+        sudo sed -i 's/^MODULES=(/MODULES=(nvidia nvidia_modeset nvidia_uvm nvidia_drm /' /etc/mkinitcpio.conf
 elif [[ $GPU_TYPE == *"amd"* ]]; then
-    sudo sed -i 's/^MODULES=(/MODULES=(amdgpu /' /etc/mkinitcpio.conf
+    grep -q "amdgpu" /etc/mkinitcpio.conf || \
+        sudo sed -i 's/^MODULES=(/MODULES=(amdgpu /' /etc/mkinitcpio.conf
 elif [[ $GPU_TYPE == *"intel"* ]]; then
-    sudo sed -i 's/^MODULES=(/MODULES=(i915 /' /etc/mkinitcpio.conf
+    grep -q "^MODULES=([^)]*i915" /etc/mkinitcpio.conf || \
+        sudo sed -i 's/^MODULES=(/MODULES=(i915 /' /etc/mkinitcpio.conf
 fi
 
 sudo sed -i 's/^#Theme=.*/Theme=bgrt/'       /etc/plymouth/plymouthd.conf 2>/dev/null || true
@@ -386,10 +411,12 @@ if [ -d "$SCRIPT_DIR/bleachbit" ]; then
     sudo cp -af "$SCRIPT_DIR/bleachbit/." /root/.config/bleachbit/
 fi
 
-sudo usermod -aG libvirt,kvm "$CURRENT_USER"
+for grp in libvirt kvm; do
+    getent group "$grp" &>/dev/null && sudo usermod -aG "$grp" "$CURRENT_USER" || true
+done
 
 if command -v zsh &>/dev/null; then
-    sudo chsh -s /usr/bin/zsh "$CURRENT_USER"
+    sudo chsh -s /usr/bin/zsh "$CURRENT_USER" || true
 
     [ ! -d "$HOME/.oh-my-zsh" ] && \
         sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" \
@@ -403,11 +430,12 @@ if command -v zsh &>/dev/null; then
         sed -i 's/ZSH_THEME="robbyrussell"/ZSH_THEME="powerlevel10k\/powerlevel10k"/' ~/.zshrc
         sed -i 's/^plugins=(.*/plugins=(git sudo systemd archlinux)/' ~/.zshrc
 
-        if ! grep -q "LC_ALL=pl_PL.UTF-8" ~/.zshrc; then
+        SHELL_LOCALE="${LANG:-${LC_ALL:-${LC_MESSAGES:-en_US.UTF-8}}}"
+        if ! grep -q "^export LC_ALL=" ~/.zshrc; then
             {
                 echo ""
-                echo "export LC_ALL=pl_PL.UTF-8"
-                echo "export LC_MESSAGES=pl_PL.UTF-8"
+                echo "export LC_ALL=${SHELL_LOCALE}"
+                echo "export LC_MESSAGES=${SHELL_LOCALE}"
                 echo "fastfetch"
             } >> ~/.zshrc
         fi
