@@ -140,29 +140,25 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 GPU_TYPE="unknown"
 HYBRID_GPU=false
+GPU_VENDORS=()
 if command -v lspci &>/dev/null; then
-    if lspci | grep -i 'vga\|3d\|display' | grep -qi 'nvidia'; then
-        GPU_TYPE="nvidia"
-    elif lspci | grep -i 'vga\|3d\|display' | grep -qi 'amd\|radeon'; then
-        GPU_TYPE="amd"
-    elif lspci | grep -i 'vga\|3d\|display' | grep -qi 'intel'; then
-        GPU_TYPE="intel"
-    fi
-
     GPU_INFO=$(lspci | grep -i -E "vga|3d" || true)
-    INTEL_COUNT=$(echo "$GPU_INFO" | grep -i -c "intel" || true)
-    AMD_COUNT=$(echo "$GPU_INFO" | grep -i -c -E "amd|ati" || true)
-    NVIDIA_COUNT=$(echo "$GPU_INFO" | grep -i -c "nvidia" || true)
 
-    TOTAL_KNOWN=$((INTEL_COUNT + AMD_COUNT + NVIDIA_COUNT))
+    echo "$GPU_INFO" | grep -qi "nvidia"      && GPU_VENDORS+=("nvidia")
+    echo "$GPU_INFO" | grep -qi -E "amd|ati"  && GPU_VENDORS+=("amd")
+    echo "$GPU_INFO" | grep -qi "intel"       && GPU_VENDORS+=("intel")
+
+    TOTAL_KNOWN=${#GPU_VENDORS[@]}
 
     if [ -z "$GPU_INFO" ] || [ "$TOTAL_KNOWN" -eq 0 ]; then
         HYBRID_GPU=false
         sudo pacman -S --needed --noconfirm lib32-mesa
     elif [ "$TOTAL_KNOWN" -ge 2 ]; then
         HYBRID_GPU=true
+        GPU_TYPE="$(IFS=+; echo "${GPU_VENDORS[*]}")"
     else
         HYBRID_GPU=false
+        GPU_TYPE="${GPU_VENDORS[0]}"
     fi
 else
     sudo pacman -S --needed --noconfirm lib32-mesa
@@ -278,11 +274,18 @@ SYSTEM_PKGS=(
     lib32-libpulse lib32-openal lib32-mangohud lib32-pipewire
 )
 
-case "$GPU_TYPE" in
-    "nvidia") SYSTEM_PKGS+=(lib32-nvidia-utils lib32-vulkan-icd-loader) ;;
-    "amd")    SYSTEM_PKGS+=(lib32-vulkan-radeon lib32-mesa lib32-vulkan-mesa-layers lib32-mesa-utils lib32-vulkan-icd-loader) ;;
-    "intel")  SYSTEM_PKGS+=(lib32-libva-intel-driver lib32-vulkan-intel lib32-mesa lib32-vulkan-mesa-layers lib32-mesa-utils lib32-vulkan-icd-loader) ;;
-esac
+for vendor in "${GPU_VENDORS[@]}"; do
+    case "$vendor" in
+        "nvidia") SYSTEM_PKGS+=(lib32-nvidia-utils lib32-vulkan-icd-loader) ;;
+        "amd")    SYSTEM_PKGS+=(lib32-vulkan-radeon lib32-mesa lib32-vulkan-mesa-layers lib32-mesa-utils lib32-vulkan-icd-loader) ;;
+        "intel")  SYSTEM_PKGS+=(lib32-libva-intel-driver lib32-vulkan-intel lib32-mesa lib32-vulkan-mesa-layers lib32-mesa-utils lib32-vulkan-icd-loader) ;;
+    esac
+done
+
+if [ "${#GPU_VENDORS[@]}" -gt 0 ]; then
+    # usuń ewentualne duplikaty (np. lib32-mesa dodane przez AMD i Intel jednocześnie)
+    readarray -t SYSTEM_PKGS < <(printf '%s\n' "${SYSTEM_PKGS[@]}" | awk '!seen[$0]++')
+fi
 
 install_pacman_pkgs "${SYSTEM_PKGS[@]}"
 
@@ -371,10 +374,12 @@ sudo plymouth-set-default-theme -R bgrt 2>/dev/null || true
 if [[ $GPU_TYPE == *"nvidia"* ]]; then
     grep -q "nvidia_drm" /etc/mkinitcpio.conf || \
         sudo sed -i 's/^MODULES=(/MODULES=(nvidia nvidia_modeset nvidia_uvm nvidia_drm /' /etc/mkinitcpio.conf
-elif [[ $GPU_TYPE == *"amd"* ]]; then
+fi
+if [[ $GPU_TYPE == *"amd"* ]]; then
     grep -q "amdgpu" /etc/mkinitcpio.conf || \
         sudo sed -i 's/^MODULES=(/MODULES=(amdgpu /' /etc/mkinitcpio.conf
-elif [[ $GPU_TYPE == *"intel"* ]]; then
+fi
+if [[ $GPU_TYPE == *"intel"* ]]; then
     grep -q "^MODULES=([^)]*i915" /etc/mkinitcpio.conf || \
         sudo sed -i 's/^MODULES=(/MODULES=(i915 /' /etc/mkinitcpio.conf
 fi
