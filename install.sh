@@ -316,11 +316,14 @@ show_progress 8 $TOTAL_STEPS "$MSG_PHASE_2"
 # =============================================================
 show_progress 9 $TOTAL_STEPS "$MSG_PHASE_3"
 
-CMDLINE="quiet splash"
+CMDLINE="quiet splash loglevel=3 vt.global_cursor_default=0"
 [[ $GPU_TYPE == *"nvidia"* ]] && CMDLINE="$CMDLINE nvidia_drm.modeset=1"
 
 BOOT_METHODS_FOUND=()
 
+# Ustawienia GRUB-a, systemd-boot, Limine i rEFInd (niżej) są niezależne od
+# tego, czy wykryto UKI - każdy z nich konfigurowany jest zawsze, gdy jego
+# plik konfiguracyjny istnieje w systemie.
 if [ -f /etc/kernel/cmdline ] && \
    { grep -rlq '_uki=' /etc/mkinitcpio.d/*.preset 2>/dev/null || \
      compgen -G "/boot/EFI/Linux/*.efi" > /dev/null 2>&1; }; then
@@ -336,8 +339,13 @@ if command -v bootctl &>/dev/null && \
     BOOT_METHODS_FOUND+=("systemd-boot")
     for loader_root in "/boot" "/efi"; do
         if [ -d "$loader_root/loader/entries" ]; then
-            [ -f "$loader_root/loader/loader.conf" ] && \
-                sudo sed -i 's/^timeout .*/timeout 0/' "$loader_root/loader/loader.conf"
+            if [ -f "$loader_root/loader/loader.conf" ]; then
+                if grep -q '^timeout ' "$loader_root/loader/loader.conf"; then
+                    sudo sed -i 's/^timeout .*/timeout 0/' "$loader_root/loader/loader.conf"
+                else
+                    echo "timeout 0" | sudo tee -a "$loader_root/loader/loader.conf" >/dev/null
+                fi
+            fi
 
             for entry in "$loader_root/loader/entries/"*.conf; do
                 [ -f "$entry" ] || continue
@@ -348,6 +356,8 @@ if command -v bootctl &>/dev/null && \
             done
         fi
     done
+    # Ustawia też timeout menu bootloadera zapisany w zmiennych NVRAM (dotyczy też wpisów UKI)
+    sudo bootctl set-timeout 0 &>/dev/null || true
 fi
 
 if [ -f /etc/default/grub ] && command -v grub-mkconfig &>/dev/null; then
@@ -356,6 +366,125 @@ if [ -f /etc/default/grub ] && command -v grub-mkconfig &>/dev/null; then
     sudo sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"$CMDLINE\"|" \
         /etc/default/grub
     sudo grub-mkconfig -o /boot/grub/grub.cfg 2>/dev/null || true
+fi
+
+# --- Limine ---
+LIMINE_CONF=""
+for candidate in /boot/limine.conf /efi/limine.conf /boot/limine.cfg /efi/limine.cfg; do
+    [ -f "$candidate" ] && { LIMINE_CONF="$candidate"; break; }
+done
+if [ -n "$LIMINE_CONF" ]; then
+    BOOT_METHODS_FOUND+=("limine")
+    if [[ "$LIMINE_CONF" == *.conf ]]; then
+        # nowy format (key: value)
+        if grep -qE '^timeout:' "$LIMINE_CONF"; then
+            sudo sed -i -E 's/^timeout:.*/timeout: 0/' "$LIMINE_CONF"
+        else
+            echo "timeout: 0" | sudo tee -a "$LIMINE_CONF" >/dev/null
+        fi
+        sudo sed -i -E "/^[[:space:]]*cmdline:/{/splash/!s/\$/ $CMDLINE/}" "$LIMINE_CONF"
+    else
+        # stary format (KEY=value)
+        if grep -qE '^TIMEOUT=' "$LIMINE_CONF"; then
+            sudo sed -i -E 's/^TIMEOUT=.*/TIMEOUT=0/' "$LIMINE_CONF"
+        else
+            echo "TIMEOUT=0" | sudo tee -a "$LIMINE_CONF" >/dev/null
+        fi
+        sudo sed -i -E "/^[[:space:]]*CMDLINE=/{/splash/!s/\$/ $CMDLINE/}" "$LIMINE_CONF"
+    fi
+    sudo sed -i 's/[[:space:]]\{2,\}/ /g' "$LIMINE_CONF"
+fi
+
+# --- rEFInd ---
+REFIND_CONF=""
+for candidate in /boot/EFI/refind/refind.conf /efi/EFI/refind/refind.conf \
+                 /boot/refind_linux.conf /efi/refind_linux.conf; do
+    [ -f "$candidate" ] && { REFIND_CONF="$candidate"; break; }
+done
+if [ -n "$REFIND_CONF" ]; then
+    BOOT_METHODS_FOUND+=("refind")
+
+    REFIND_MAIN_CONF=""
+    for candidate in /boot/EFI/refind/refind.conf /efi/EFI/refind/refind.conf; do
+        [ -f "$candidate" ] && { REFIND_MAIN_CONF="$candidate"; break; }
+    done
+    if [ -n "$REFIND_MAIN_CONF" ]; then
+        if grep -qE '^timeout[[:space:]]' "$REFIND_MAIN_CONF"; then
+            sudo sed -i -E 's/^timeout[[:space:]].*/timeout 0/' "$REFIND_MAIN_CONF"
+        else
+            echo "timeout 0" | sudo tee -a "$REFIND_MAIN_CONF" >/dev/null
+        fi
+    fi
+
+    # refind_linux.conf: wiersze w formacie "Etykieta" "opcje jądra"
+    for rl_conf in /boot/refind_linux.conf /efi/refind_linux.conf \
+                   /boot/EFI/Linux/refind_linux.conf /efi/EFI/Linux/refind_linux.conf; do
+        [ -f "$rl_conf" ] || continue
+        sudo sed -i -E "/splash/! s/^([[:space:]]*\"[^\"]*\"[[:space:]]+\")([^\"]*)\"[[:space:]]*\$/\\1\\2 ${CMDLINE}\"/" "$rl_conf"
+    done
+fi
+
+# --- EFISTUB (jądro bootowane bezpośrednio przez UEFI, bez menedżera rozruchu) ---
+# W przeciwieństwie do UKI (jeden plik .efi = jądro+initrd+cmdline), klasyczny
+# EFISTUB to wpis NVRAM wskazujący wprost na osobny plik vmlinuz-*, z opcjami
+# jądra zapisanymi w danych wpisu (bez żadnego pliku konfiguracyjnego).
+EFISTUB_FOUND=false
+if command -v efibootmgr &>/dev/null; then
+    re_boot_line='^Boot([0-9A-Fa-f]{4})\*?[[:space:]]*(.*)$'
+    re_file_node='/File\(([^)]*)\)(.*)$'
+    re_partuuid='GPT,([0-9A-Fa-f-]{36})'
+    while IFS= read -r line; do
+        [[ "$line" =~ $re_boot_line ]] || continue
+        boot_num="${BASH_REMATCH[1]}"
+        rest="${BASH_REMATCH[2]}"
+        [[ "$rest" =~ $re_file_node ]] || continue
+        loader_path="${BASH_REMATCH[1]}"
+        cmdline_data="${BASH_REMATCH[2]}"
+        # pomijamy wpisy UKI (.efi w /EFI/Linux) oraz wpisy innych menedżerów (.efi gdziekolwiek)
+        [[ "$loader_path" == *.efi || "$loader_path" == *.EFI ]] && continue
+        [[ "$loader_path" =~ [Vv][Mm][Ll][Ii][Nn][Uu][Zz] ]] || continue
+
+        EFISTUB_FOUND=true
+
+        if ! grep -qw "splash" <<<"$cmdline_data"; then
+            partuuid=""
+            [[ "$rest" =~ $re_partuuid ]] && partuuid="${BASH_REMATCH[1]}"
+            label="${rest%%$'\t'*}"
+            if [ -n "$partuuid" ] && command -v blkid &>/dev/null; then
+                part_dev="$(blkid --match-token "PARTUUID=$partuuid" -o device 2>/dev/null || true)"
+                if [ -n "$part_dev" ]; then
+                    re_nvme_part='^(.*[0-9])p([0-9]+)$'
+                    re_sata_part='^(.*[a-zA-Z])([0-9]+)$'
+                    if [[ "$part_dev" =~ $re_nvme_part ]]; then
+                        disk_dev="${BASH_REMATCH[1]}"; part_num="${BASH_REMATCH[2]}"
+                    elif [[ "$part_dev" =~ $re_sata_part ]]; then
+                        disk_dev="${BASH_REMATCH[1]}"; part_num="${BASH_REMATCH[2]}"
+                    else
+                        disk_dev=""; part_num=""
+                    fi
+                    if [ -n "$disk_dev" ] && [ -n "$part_num" ]; then
+                        loader_path_bs="$(sed 's#/#\\#g' <<<"$loader_path")"
+                        new_cmdline="$(sed 's/[[:space:]]*$//' <<<"$cmdline_data") $CMDLINE"
+                        new_cmdline="$(sed 's/  */ /g' <<<"$new_cmdline")"
+                        sudo efibootmgr -b "$boot_num" -B &>/dev/null || true
+                        sudo efibootmgr -c -d "$disk_dev" -p "$part_num" \
+                            -L "$label" -l "$loader_path_bs" -u "$new_cmdline" &>/dev/null || true
+                    fi
+                fi
+            fi
+        fi
+    done < <(efibootmgr -v 2>/dev/null)
+fi
+[ "$EFISTUB_FOUND" = true ] && BOOT_METHODS_FOUND+=("efistub")
+
+# Czysty UKI/EFISTUB bootowany bezpośrednio z UEFI (bez systemd-boot/GRUB/Limine/rEFInd) -
+# czas oczekiwania menu firmware'u ustawiany jest w NVRAM, a nie w pliku
+if [[ " ${BOOT_METHODS_FOUND[*]} " != *" systemd-boot "* ]] && \
+   [[ " ${BOOT_METHODS_FOUND[*]} " != *" grub "* ]] && \
+   [[ " ${BOOT_METHODS_FOUND[*]} " != *" limine "* ]] && \
+   [[ " ${BOOT_METHODS_FOUND[*]} " != *" refind "* ]] && \
+   command -v efibootmgr &>/dev/null; then
+    sudo efibootmgr -t 0 &>/dev/null || true
 fi
 
 show_progress 10 $TOTAL_STEPS "$MSG_PHASE_3"
@@ -384,17 +513,44 @@ if [[ $GPU_TYPE == *"intel"* ]]; then
         sudo sed -i 's/^MODULES=(/MODULES=(i915 /' /etc/mkinitcpio.conf
 fi
 
-sudo sed -i 's/^#Theme=.*/Theme=bgrt/'       /etc/plymouth/plymouthd.conf 2>/dev/null || true
-sudo sed -i 's/^#ShowDelay=.*/ShowDelay=0/'  /etc/plymouth/plymouthd.conf 2>/dev/null || true
+PLYMOUTHD_CONF="/etc/plymouth/plymouthd.conf"
+[ -f "$PLYMOUTHD_CONF" ] || printf '[Daemon]\n' | sudo tee "$PLYMOUTHD_CONF" >/dev/null
+grep -q '^\[Daemon\]' "$PLYMOUTHD_CONF" || sudo sed -i '1i [Daemon]' "$PLYMOUTHD_CONF"
+
+if grep -q '^Theme=' "$PLYMOUTHD_CONF"; then
+    sudo sed -i 's/^Theme=.*/Theme=bgrt/' "$PLYMOUTHD_CONF"
+elif grep -q '^#Theme=' "$PLYMOUTHD_CONF"; then
+    sudo sed -i 's/^#Theme=.*/Theme=bgrt/' "$PLYMOUTHD_CONF"
+else
+    sudo sed -i '/^\[Daemon\]/a Theme=bgrt' "$PLYMOUTHD_CONF"
+fi
+
+if grep -q '^ShowDelay=' "$PLYMOUTHD_CONF"; then
+    sudo sed -i 's/^ShowDelay=.*/ShowDelay=0/' "$PLYMOUTHD_CONF"
+elif grep -q '^#ShowDelay=' "$PLYMOUTHD_CONF"; then
+    sudo sed -i 's/^#ShowDelay=.*/ShowDelay=0/' "$PLYMOUTHD_CONF"
+else
+    sudo sed -i '/^\[Daemon\]/a ShowDelay=0' "$PLYMOUTHD_CONF"
+fi
 
 for preset in /etc/mkinitcpio.d/*.preset; do
     [ -f "$preset" ] && sudo sed -i 's/--splash [^ "]*//g' "$preset"
 done
 
-if ! grep -q "plymouth" /etc/mkinitcpio.conf; then
-    sudo sed -i 's/udev/udev plymouth/' /etc/mkinitcpio.conf
+# Hook plymoutha zależy od typu initramfs: sd-plymouth dla hooków systemd,
+# plymouth dla klasycznych hooków udev. Wcześniejsza wersja szukała tylko
+# "udev", więc przy hookach systemd (częste przy UKI) plymouth nigdy się
+# nie dodawał i ekran powitalny się nie pojawiał.
+if ! grep -qE '(^|[[:space:]])(sd-plymouth|plymouth)([[:space:]]|$)' /etc/mkinitcpio.conf; then
+    if grep -qE '(^|[[:space:]])systemd([[:space:]]|$)' /etc/mkinitcpio.conf; then
+        sudo sed -i 's/\bsystemd\b/systemd sd-plymouth/' /etc/mkinitcpio.conf
+    else
+        sudo sed -i 's/\budev\b/udev plymouth/' /etc/mkinitcpio.conf
+    fi
 fi
 
+# -P przebudowuje initramfs/UKI dla WSZYSTKICH zainstalowanych kerneli
+# (linux, linux-lts, linux-zen), bazując na plikach w /etc/mkinitcpio.d/
 sudo mkinitcpio -P
 
 show_progress 11 $TOTAL_STEPS "$MSG_PHASE_3"
