@@ -356,6 +356,7 @@ if [ -f /etc/default/ufw ]; then
 fi
 
 if command -v ufw &>/dev/null; then
+    sudo ufw allow ssh || true
     sudo systemctl enable --now ufw || true
     sudo ufw allow in  on virbr0 || true
     sudo ufw allow out on virbr0 || true
