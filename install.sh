@@ -49,7 +49,7 @@ trap cleanup_on_exit EXIT
 _pick_msg() { [[ "$SCRIPT_LANG" == "pl" ]] && echo "$1" || echo "$2"; }
 log_info()  { local m; m="$(_pick_msg "$1" "$2")"; echo -e "${INFO}==> $m${NC}"; }
 log_ok()    { local m; m="$(_pick_msg "$1" "$2")"; echo -e "${SUCCESS}✔ $m${NC}"; }
-log_err()   { local m; m="$(_pick_msg "$1" "$2")"; echo -e "${ERROR}✘ ERROR: $m${NC}"; }
+log_err()   { local m; m="$(_pick_msg "$1" "$2")"; echo -e "${ERR}✘ ERROR: $m${NC}"; }
 log_warn()  { local m; m="$(_pick_msg "$1" "$2")"; echo -e "${WARN}⚠ WARN: $m${NC}"; }
 
 trap 'log_err "Błąd w linii $LINENO. Polecenie: $BASH_COMMAND" "Error at line $LINENO. Command: $BASH_COMMAND"' ERR
@@ -149,8 +149,8 @@ if command -v lspci &>/dev/null; then
     fi
 fi
 
-if [ -f .update.sh ]; then
-    cp -af .update.sh ~/.update.sh
+if [ -f "$SCRIPT_DIR/.update.sh" ]; then
+    cp -af "$SCRIPT_DIR/.update.sh" ~/.update.sh
     chmod +x ~/.update.sh
 fi
 
@@ -218,6 +218,8 @@ show_progress 3 $TOTAL_STEPS "$MSG_PHASE_1"
 show_progress 4 $TOTAL_STEPS "$MSG_PHASE_2"
 
 sudo pacman -Syu --noconfirm
+
+show_progress 5 $TOTAL_STEPS "$MSG_PHASE_2"
 
 SYSTEM_PKGS=(
     base-devel git zsh pacman-contrib fastfetch reflector
