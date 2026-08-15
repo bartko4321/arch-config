@@ -1,6 +1,6 @@
 #!/bin/bash
 # =====================================
-#  SKRYPT INSTALACYJNY - Arch Linux 
+#  SKRYPT INSTALACYJNY - Arch Linux
 # =====================================
 
 set -euo pipefail
@@ -139,6 +139,7 @@ CURRENT_USER=$(whoami)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 GPU_TYPE="unknown"
+HYBRID_GPU=false
 if command -v lspci &>/dev/null; then
     if lspci | grep -i 'vga\|3d\|display' | grep -qi 'nvidia'; then
         GPU_TYPE="nvidia"
@@ -147,6 +148,24 @@ if command -v lspci &>/dev/null; then
     elif lspci | grep -i 'vga\|3d\|display' | grep -qi 'intel'; then
         GPU_TYPE="intel"
     fi
+
+    GPU_INFO=$(lspci | grep -i -E "vga|3d" || true)
+    INTEL_COUNT=$(echo "$GPU_INFO" | grep -i -c "intel" || true)
+    AMD_COUNT=$(echo "$GPU_INFO" | grep -i -c -E "amd|ati" || true)
+    NVIDIA_COUNT=$(echo "$GPU_INFO" | grep -i -c "nvidia" || true)
+
+    TOTAL_KNOWN=$((INTEL_COUNT + AMD_COUNT + NVIDIA_COUNT))
+
+    if [ -z "$GPU_INFO" ] || [ "$TOTAL_KNOWN" -eq 0 ]; then
+        HYBRID_GPU=false
+        sudo pacman -S --needed --noconfirm lib32-mesa
+    elif [ "$TOTAL_KNOWN" -ge 2 ]; then
+        HYBRID_GPU=true
+    else
+        HYBRID_GPU=false
+    fi
+else
+    sudo pacman -S --needed --noconfirm lib32-mesa
 fi
 
 if [ -f "$SCRIPT_DIR/.update.sh" ]; then
@@ -188,7 +207,6 @@ fi
 mkdir -p ~/.config
 if [[ -f ~/.config/kwalletrc ]]; then
     if grep -q "^\[Wallet\]" ~/.config/kwalletrc; then
-        # Wyciągamy TYLKO sekcję [Wallet], żeby sprawdzić czy zawiera własną linię Enabled=
         WALLET_SECTION="$(awk '/^\[Wallet\]/{f=1;next} /^\[/{f=0} f' ~/.config/kwalletrc)"
         sed -i '/^\[Wallet\]/,/^\[/{s/^Enabled=.*/Enabled=false/}' ~/.config/kwalletrc
         if ! echo "$WALLET_SECTION" | grep -q "^Enabled="; then
