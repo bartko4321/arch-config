@@ -364,12 +364,52 @@ CMDLINE="quiet splash loglevel=3 vt.global_cursor_default=0"
 
 BOOT_METHODS_FOUND=()
 
+# Wykrywa RZECZYWISTE ścieżki ESP/XBOOTLDR zamiast zgadywać na sztywno
+# /boot i /efi. Bez tego np. ESP zamontowane w /boot/efi powodowało, że
+# loader.conf/entries/UKI nigdy nie były znajdowane, więc menu bootloadera
+# się nie chowało, a "splash" nigdy nie trafiał do cmdline (stąd brak
+# plymoutha).
+declare -a LOADER_ROOTS=()
+if command -v bootctl &>/dev/null; then
+    for p in "$(bootctl --print-esp-path 2>/dev/null || true)" \
+             "$(bootctl --print-boot-path 2>/dev/null || true)"; do
+        [ -n "$p" ] && [ -d "$p" ] && LOADER_ROOTS+=("$p")
+    done
+fi
+for p in /boot /efi /boot/efi; do
+    [ -d "$p" ] && LOADER_ROOTS+=("$p")
+done
+# usuń duplikaty, zachowując kolejność
+if [ ${#LOADER_ROOTS[@]} -gt 0 ]; then
+    readarray -t LOADER_ROOTS < <(printf '%s\n' "${LOADER_ROOTS[@]}" | awk '!seen[$0]++')
+fi
+log_info "Wykryte katalogi loadera (ESP/XBOOTLDR): ${LOADER_ROOTS[*]:-brak}" \
+         "Detected loader directories (ESP/XBOOTLDR): ${LOADER_ROOTS[*]:-none}"
+
+# /boot bywa zamontowane z fmask/dmask, które blokują zwykłemu użytkownikowi
+# nawet wejście do katalogu (np. "fmask=0077,dmask=0077" bez uid=). Zwykłe
+# "[ -f ... ]"/"grep" bez sudo wtedy po cichu "nie widzą" plików (permission
+# denied wygląda dla basha identycznie jak "nie istnieje"), więc CAŁA
+# detekcja i modyfikacja bootloadera nic nie robiła mimo że pliki tam były.
+# Dlatego wszystkie odczyty pod ścieżkami loadera idą teraz przez sudo.
+broot_f() { sudo test -f "$1" 2>/dev/null; }
+broot_d() { sudo test -d "$1" 2>/dev/null; }
+broot_grep() { sudo grep "$@" 2>/dev/null; }
+broot_glob_first() { sudo find "$1" -maxdepth 1 -iname "$2" -print -quit 2>/dev/null; }
+
 # Ustawienia GRUB-a, systemd-boot, Limine i rEFInd (niżej) są niezależne od
 # tego, czy wykryto UKI - każdy z nich konfigurowany jest zawsze, gdy jego
 # plik konfiguracyjny istnieje w systemie.
+UKI_EFI_FOUND=false
+for r in "${LOADER_ROOTS[@]}"; do
+    if [ -n "$(broot_glob_first "$r/EFI/Linux" '*.efi')" ]; then
+        UKI_EFI_FOUND=true
+        break
+    fi
+done
 if [ -f /etc/kernel/cmdline ] && \
    { grep -rlq '_uki=' /etc/mkinitcpio.d/*.preset 2>/dev/null || \
-     compgen -G "/boot/EFI/Linux/*.efi" > /dev/null 2>&1; }; then
+     [ "$UKI_EFI_FOUND" = true ]; }; then
     BOOT_METHODS_FOUND+=("uki")
     if ! grep -qw "splash" /etc/kernel/cmdline; then
         sudo sed -i "s/\$/ $CMDLINE/" /etc/kernel/cmdline
@@ -377,22 +417,24 @@ if [ -f /etc/kernel/cmdline ] && \
     fi
 fi
 
-if command -v bootctl &>/dev/null && \
-   { [ -f /boot/loader/loader.conf ] || [ -f /efi/loader/loader.conf ]; }; then
+SYSTEMD_BOOT_DETECTED=false
+for r in "${LOADER_ROOTS[@]}"; do
+    broot_f "$r/loader/loader.conf" && SYSTEMD_BOOT_DETECTED=true
+done
+if command -v bootctl &>/dev/null && [ "$SYSTEMD_BOOT_DETECTED" = true ]; then
     BOOT_METHODS_FOUND+=("systemd-boot")
-    for loader_root in "/boot" "/efi"; do
-        if [ -d "$loader_root/loader/entries" ]; then
-            if [ -f "$loader_root/loader/loader.conf" ]; then
-                if grep -q '^timeout ' "$loader_root/loader/loader.conf"; then
+    for loader_root in "${LOADER_ROOTS[@]}"; do
+        if broot_d "$loader_root/loader/entries"; then
+            if broot_f "$loader_root/loader/loader.conf"; then
+                if broot_grep -q '^timeout ' "$loader_root/loader/loader.conf"; then
                     sudo sed -i 's/^timeout .*/timeout 0/' "$loader_root/loader/loader.conf"
                 else
                     echo "timeout 0" | sudo tee -a "$loader_root/loader/loader.conf" >/dev/null
                 fi
             fi
 
-            for entry in "$loader_root/loader/entries/"*.conf; do
-                [ -f "$entry" ] || continue
-                if ! grep -qw "splash" "$entry"; then
+            for entry in $(sudo find "$loader_root/loader/entries" -maxdepth 1 -iname '*.conf' 2>/dev/null); do
+                if ! broot_grep -qw "splash" "$entry"; then
                     sudo sed -i "/^options/ s/\$/ $CMDLINE/" "$entry"
                     sudo sed -i 's/  */ /g' "$entry"
                 fi
@@ -414,13 +456,13 @@ fi
 # --- Limine ---
 LIMINE_CONF=""
 for candidate in /boot/limine.conf /efi/limine.conf /boot/limine.cfg /efi/limine.cfg; do
-    [ -f "$candidate" ] && { LIMINE_CONF="$candidate"; break; }
+    broot_f "$candidate" && { LIMINE_CONF="$candidate"; break; }
 done
 if [ -n "$LIMINE_CONF" ]; then
     BOOT_METHODS_FOUND+=("limine")
     if [[ "$LIMINE_CONF" == *.conf ]]; then
         # nowy format (key: value)
-        if grep -qE '^timeout:' "$LIMINE_CONF"; then
+        if broot_grep -qE '^timeout:' "$LIMINE_CONF"; then
             sudo sed -i -E 's/^timeout:.*/timeout: 0/' "$LIMINE_CONF"
         else
             echo "timeout: 0" | sudo tee -a "$LIMINE_CONF" >/dev/null
@@ -428,7 +470,7 @@ if [ -n "$LIMINE_CONF" ]; then
         sudo sed -i -E "/^[[:space:]]*cmdline:/{/splash/!s/\$/ $CMDLINE/}" "$LIMINE_CONF"
     else
         # stary format (KEY=value)
-        if grep -qE '^TIMEOUT=' "$LIMINE_CONF"; then
+        if broot_grep -qE '^TIMEOUT=' "$LIMINE_CONF"; then
             sudo sed -i -E 's/^TIMEOUT=.*/TIMEOUT=0/' "$LIMINE_CONF"
         else
             echo "TIMEOUT=0" | sudo tee -a "$LIMINE_CONF" >/dev/null
@@ -442,17 +484,17 @@ fi
 REFIND_CONF=""
 for candidate in /boot/EFI/refind/refind.conf /efi/EFI/refind/refind.conf \
                  /boot/refind_linux.conf /efi/refind_linux.conf; do
-    [ -f "$candidate" ] && { REFIND_CONF="$candidate"; break; }
+    broot_f "$candidate" && { REFIND_CONF="$candidate"; break; }
 done
 if [ -n "$REFIND_CONF" ]; then
     BOOT_METHODS_FOUND+=("refind")
 
     REFIND_MAIN_CONF=""
     for candidate in /boot/EFI/refind/refind.conf /efi/EFI/refind/refind.conf; do
-        [ -f "$candidate" ] && { REFIND_MAIN_CONF="$candidate"; break; }
+        broot_f "$candidate" && { REFIND_MAIN_CONF="$candidate"; break; }
     done
     if [ -n "$REFIND_MAIN_CONF" ]; then
-        if grep -qE '^timeout[[:space:]]' "$REFIND_MAIN_CONF"; then
+        if broot_grep -qE '^timeout[[:space:]]' "$REFIND_MAIN_CONF"; then
             sudo sed -i -E 's/^timeout[[:space:]].*/timeout 0/' "$REFIND_MAIN_CONF"
         else
             echo "timeout 0" | sudo tee -a "$REFIND_MAIN_CONF" >/dev/null
@@ -462,7 +504,7 @@ if [ -n "$REFIND_CONF" ]; then
     # refind_linux.conf: wiersze w formacie "Etykieta" "opcje jądra"
     for rl_conf in /boot/refind_linux.conf /efi/refind_linux.conf \
                    /boot/EFI/Linux/refind_linux.conf /efi/EFI/Linux/refind_linux.conf; do
-        [ -f "$rl_conf" ] || continue
+        broot_f "$rl_conf" || continue
         sudo sed -i -E "/splash/! s/^([[:space:]]*\"[^\"]*\"[[:space:]]+\")([^\"]*)\"[[:space:]]*\$/\\1\\2 ${CMDLINE}\"/" "$rl_conf"
     done
 fi
@@ -584,11 +626,11 @@ done
 # plymouth dla klasycznych hooków udev. Wcześniejsza wersja szukała tylko
 # "udev", więc przy hookach systemd (częste przy UKI) plymouth nigdy się
 # nie dodawał i ekran powitalny się nie pojawiał.
-if ! grep -qE '(^|[[:space:]])(sd-plymouth|plymouth)([[:space:]]|$)' /etc/mkinitcpio.conf; then
-    if grep -qE '(^|[[:space:]])systemd([[:space:]]|$)' /etc/mkinitcpio.conf; then
-        sudo sed -i 's/\bsystemd\b/systemd sd-plymouth/' /etc/mkinitcpio.conf
+if ! broot_grep -qE '^HOOKS=.*(^|[[:space:]])(sd-plymouth|plymouth)([[:space:]]|\))' /etc/mkinitcpio.conf; then
+    if broot_grep -qE '^HOOKS=.*(^|[[:space:]])systemd([[:space:]]|\))' /etc/mkinitcpio.conf; then
+        sudo sed -i '/^HOOKS=/ s/\bsystemd\b/systemd sd-plymouth/' /etc/mkinitcpio.conf
     else
-        sudo sed -i 's/\budev\b/udev plymouth/' /etc/mkinitcpio.conf
+        sudo sed -i '/^HOOKS=/ s/\budev\b/udev plymouth/' /etc/mkinitcpio.conf
     fi
 fi
 
