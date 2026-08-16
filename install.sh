@@ -456,9 +456,6 @@ patch_limine_conf() {
     for f in "${LIMINE_CONFS[@]}"; do
         patch_one_limine_conf "$f"
     done
-    # Niektóre układy (np. hooki generujące kopię na ESP) trzymają osobną
-    # kopię configu, którą aktualizują tylko z głównego /boot/limine.conf.
-    # Zsynchronizuj wszystkie kopie z pierwszą, żeby żadna nie zostawała stara.
     if [ ${#LIMINE_CONFS[@]} -gt 1 ]; then
         local src="${LIMINE_CONFS[0]}"
         for f in "${LIMINE_CONFS[@]:1}"; do
