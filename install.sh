@@ -324,8 +324,6 @@ if ! command -v yay &>/dev/null; then
         if ! retry_cmd 5 curl -4 -fsSL \
             "https://aur.archlinux.org/cgit/aur.git/snapshot/yay.tar.gz" \
             -o /tmp/yay.tar.gz; then
-            log_err "Nie udało się pobrać yay (git ani curl) po kilku próbach - sprawdź połączenie sieciowe." \
-                     "Failed to download yay (both git and curl) after several attempts - check your network connection."
             exit 1
         fi
         tar -xzf /tmp/yay.tar.gz -C /tmp/yay --strip-components=1
@@ -365,8 +363,6 @@ done
 if [ ${#LOADER_ROOTS[@]} -gt 0 ]; then
     readarray -t LOADER_ROOTS < <(printf '%s\n' "${LOADER_ROOTS[@]}" | awk '!seen[$0]++')
 fi
-log_info "Wykryte katalogi loadera (ESP/XBOOTLDR): ${LOADER_ROOTS[*]:-brak}" \
-         "Detected loader directories (ESP/XBOOTLDR): ${LOADER_ROOTS[*]:-none}"
 
 broot_f() { sudo test -f "$1" 2>/dev/null; }
 broot_d() { sudo test -d "$1" 2>/dev/null; }
@@ -426,28 +422,54 @@ if [ -f /etc/default/grub ] && command -v grub-mkconfig &>/dev/null; then
 fi
 
 # --- Limine ---
-LIMINE_CONF=""
-for candidate in /boot/limine.conf /efi/limine.conf /boot/limine.cfg /efi/limine.cfg; do
-    broot_f "$candidate" && { LIMINE_CONF="$candidate"; break; }
+declare -a LIMINE_CONFS=()
+for candidate in /boot/limine.conf /efi/limine.conf \
+                  /boot/EFI/Limine/limine.conf /efi/EFI/Limine/limine.conf \
+                  /boot/EFI/BOOT/limine.conf /efi/EFI/BOOT/limine.conf \
+                  /boot/limine.cfg /efi/limine.cfg; do
+    broot_f "$candidate" && LIMINE_CONFS+=("$candidate")
 done
-if [ -n "$LIMINE_CONF" ]; then
-    BOOT_METHODS_FOUND+=("limine")
-    if [[ "$LIMINE_CONF" == *.conf ]]; then
-        if grep -qE '^timeout:' "$LIMINE_CONF"; then
-            sudo sed -i -E 's/^timeout:.*/timeout: 0/' "$LIMINE_CONF"
+
+patch_one_limine_conf() {
+    local f="$1"
+    broot_f "$f" || return 0
+    if [[ "$f" == *.conf ]]; then
+        if grep -qiE '^timeout:' "$f"; then
+            sudo sed -i -E 's/^timeout:.*/timeout: 0/I' "$f"
         else
-            echo "timeout: 0" | sudo tee -a "$LIMINE_CONF" >/dev/null
+            sudo sed -i '1i timeout: 0' "$f"
         fi
-        sudo sed -i -E "/^[[:space:]]*cmdline:/{/splash/!s/\$/ $CMDLINE/}" "$LIMINE_CONF"
+        sudo sed -i -E "/^[[:space:]]*cmdline:/{/splash/!s/\$/ $CMDLINE/}" "$f"
     else
-        if grep -qE '^TIMEOUT=' "$LIMINE_CONF"; then
-            sudo sed -i -E 's/^TIMEOUT=.*/TIMEOUT=0/' "$LIMINE_CONF"
+        if grep -qiE '^timeout=' "$f"; then
+            sudo sed -i -E 's/^timeout=.*/TIMEOUT=0/I' "$f"
         else
-            echo "TIMEOUT=0" | sudo tee -a "$LIMINE_CONF" >/dev/null
+            sudo sed -i '1i TIMEOUT=0' "$f"
         fi
-        sudo sed -i -E "/^[[:space:]]*CMDLINE=/{/splash/!s/\$/ $CMDLINE/}" "$LIMINE_CONF"
+        sudo sed -i -E "/^[[:space:]]*CMDLINE=/{/splash/!s/\$/ $CMDLINE/}" "$f"
     fi
-    sudo sed -i 's/[[:space:]]\{2,\}/ /g' "$LIMINE_CONF"
+    sudo sed -i 's/[[:space:]]\{2,\}/ /g' "$f"
+}
+
+patch_limine_conf() {
+    local f
+    for f in "${LIMINE_CONFS[@]}"; do
+        patch_one_limine_conf "$f"
+    done
+    # Niektóre układy (np. hooki generujące kopię na ESP) trzymają osobną
+    # kopię configu, którą aktualizują tylko z głównego /boot/limine.conf.
+    # Zsynchronizuj wszystkie kopie z pierwszą, żeby żadna nie zostawała stara.
+    if [ ${#LIMINE_CONFS[@]} -gt 1 ]; then
+        local src="${LIMINE_CONFS[0]}"
+        for f in "${LIMINE_CONFS[@]:1}"; do
+            [[ "$src" == *.conf && "$f" == *.conf ]] && sudo cp -f "$src" "$f" 2>/dev/null || true
+        done
+    fi
+}
+
+if [ ${#LIMINE_CONFS[@]} -gt 0 ]; then
+    BOOT_METHODS_FOUND+=("limine")
+    patch_limine_conf
 fi
 
 # --- rEFInd ---
@@ -539,10 +561,11 @@ show_progress 10 $TOTAL_STEPS "$MSG_PHASE_3"
 
 if [ ${#BOOT_METHODS_FOUND[@]} -gt 0 ]; then
     METHODS_JOINED="$(IFS=', '; echo "${BOOT_METHODS_FOUND[*]}")"
+    printf '\r\033[K' >&3
     if [[ "$SCRIPT_LANG" == "pl" ]]; then
-        echo -e "${INFO}==> Wykryte i skonfigurowane metody rozruchu: ${METHODS_JOINED}${NC}"
+        echo -e "${INFO}==> Wykryte i skonfigurowane metody rozruchu: ${METHODS_JOINED}${NC}" >&3
     else
-        echo -e "${INFO}==> Detected and configured boot methods: ${METHODS_JOINED}${NC}"
+        echo -e "${INFO}==> Detected and configured boot methods: ${METHODS_JOINED}${NC}" >&3
     fi
 fi
 
@@ -625,6 +648,18 @@ fix_uki_collisions() {
 fix_uki_collisions
 
 sudo mkinitcpio -P
+
+if [ ${#LIMINE_CONFS[@]} -gt 0 ] && pacman -Qq limine-mkinitcpio-hook &>/dev/null; then
+    for candidate in /boot/limine.conf /efi/limine.conf \
+                      /boot/EFI/Limine/limine.conf /efi/EFI/Limine/limine.conf \
+                      /boot/EFI/BOOT/limine.conf /efi/EFI/BOOT/limine.conf \
+                      /boot/limine.cfg /efi/limine.cfg; do
+        if broot_f "$candidate" && [[ ! " ${LIMINE_CONFS[*]} " == *" ${candidate} "* ]]; then
+            LIMINE_CONFS+=("$candidate")
+        fi
+    done
+    patch_limine_conf
+fi
 
 show_progress 11 $TOTAL_STEPS "$MSG_PHASE_3"
 
