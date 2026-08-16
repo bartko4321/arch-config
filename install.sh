@@ -28,8 +28,6 @@ LOG_FILE="$HOME/install_error_$(date +%Y%m%d_%H%M%S).log"
 exec 3>&1
 exec >>"$TMP_LOG" 2>&1
 
-printf '\033[?7l' >&3
-
 cleanup_on_exit() {
     local exit_code=$?
     printf '\033[?7h' >&3
@@ -106,6 +104,25 @@ if [[ "$EUID" -eq 0 ]]; then
     exit 1
 fi
 
+CURRENT_USER=$(whoami)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+printf '\033[?7h\n' >&3
+sudo -v
+SUDOERS_TMP="$(mktemp)"
+echo "$CURRENT_USER ALL=(ALL) NOPASSWD: ALL" > "$SUDOERS_TMP"
+chmod 0440 "$SUDOERS_TMP"
+if sudo visudo -cf "$SUDOERS_TMP" &>/dev/null; then
+    sudo install -m 0440 -o root -g root "$SUDOERS_TMP" /etc/sudoers.d/99-temp-installer
+else
+    rm -f "$SUDOERS_TMP"
+    echo -e "${ERR}✘ Nieprawidłowa składnia pliku sudoers – przerywam.${NC}" >&3
+    exit 1
+fi
+rm -f "$SUDOERS_TMP"
+
+printf '\033[?7l' >&3
+
 # =============================================================
 #  ETAP 1/3: KONFIGURACJA I OPTYMALIZACJA SYSTEMU
 # =============================================================
@@ -135,8 +152,6 @@ install_yay_pkgs() {
     fi
 }
 
-# Ponawia polecenie sieciowe do $1 razy z rosnącym opóźnieniem - przydatne przy
-# tymczasowych zrywkach TLS/DNS (np. "TLS connect error: unexpected eof").
 retry_cmd() {
     local attempts="$1"; shift
     local delay=3
@@ -145,16 +160,11 @@ retry_cmd() {
         if (( n >= attempts )); then
             return 1
         fi
-        log_warn "Próba $n/$attempts nieudana, ponawiam za ${delay}s..." \
-                 "Attempt $n/$attempts failed, retrying in ${delay}s..."
         sleep "$delay"
         delay=$(( delay * 2 ))
         n=$(( n + 1 ))
     done
 }
-
-CURRENT_USER=$(whoami)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 GPU_TYPE="unknown"
 HYBRID_GPU=false
@@ -199,20 +209,7 @@ fi
 
 show_progress 1 $TOTAL_STEPS "$MSG_PHASE_1"
 
-sudo -v
-SUDOERS_TMP="$(mktemp)"
-echo "$CURRENT_USER ALL=(ALL) NOPASSWD: ALL" > "$SUDOERS_TMP"
-chmod 0440 "$SUDOERS_TMP"
-if sudo visudo -cf "$SUDOERS_TMP" &>/dev/null; then
-    sudo install -m 0440 -o root -g root "$SUDOERS_TMP" /etc/sudoers.d/99-temp-installer
-else
-    rm -f "$SUDOERS_TMP"
-    echo -e "${ERR}✘ Nieprawidłowa składnia pliku sudoers – przerywam.${NC}" >&3
-    exit 1
-fi
-rm -f "$SUDOERS_TMP"
-
-PACKAGES_TO_REMOVE="htop nano konqueror plasma-browser-integration plasma-vault krdp krfb plasma-thunderbolt kontact kmail kontrast plasma-welcome imagemagick kaddressbook kdepim-runtime akonadi-server akregator korganizer gnome-software epiphany decibels rhythmbox showtime cosmic-store cosmic-player parole kwalletmanager"
+PACKAGES_TO_REMOVE="htop nano konqueror plasma-browser-integration plasma-vault krdp krfb plasma-thunderbolt zbar ristretto kontact kmail kontrast plasma-welcome imagemagick kaddressbook kdepim-runtime akonadi-server akregator korganizer gnome-software epiphany decibels rhythmbox showtime cosmic-store cosmic-player parole kwalletmanager"
 INSTALLED_PACKAGES=$(pacman -Qq $PACKAGES_TO_REMOVE 2>/dev/null || true)
 if [ -n "$INSTALLED_PACKAGES" ]; then
     sudo pacman -Rs --noconfirm $INSTALLED_PACKAGES 2>/dev/null || true
@@ -301,17 +298,11 @@ for vendor in "${GPU_VENDORS[@]}"; do
 done
 
 if [ "${#GPU_VENDORS[@]}" -gt 0 ]; then
-    # usuń ewentualne duplikaty (np. lib32-mesa dodane przez AMD i Intel jednocześnie)
     readarray -t SYSTEM_PKGS < <(printf '%s\n' "${SYSTEM_PKGS[@]}" | awk '!seen[$0]++')
 fi
 
 install_pacman_pkgs "${SYSTEM_PKGS[@]}"
 
-# vhba-module/cdemu-daemon próbują od razu załadować moduł jądra dla AKTUALNIE
-# uruchomionego jądra. Jeśli "pacman -Syu" wyżej zaktualizował pakiet jądra,
-# moduł trafia do katalogu NOWEGO jądra, a system wciąż działa na starym - stąd
-# nieszkodliwy w tym momencie błąd "modprobe: FATAL: Module vhba not found...".
-# Moduł załaduje się poprawnie po restarcie na końcu skryptu.
 sudo depmod -a &>/dev/null || true
 
 show_progress 6 $TOTAL_STEPS "$MSG_PHASE_2"
@@ -324,14 +315,10 @@ sudo flatpak install -y flathub it.mijorus.gearlever || true
 show_progress 7 $TOTAL_STEPS "$MSG_PHASE_2"
 
 if ! command -v yay &>/dev/null; then
-    # Świeżo zainstalowany system czasem ma nieskorygowany zegar, co bywa
-    # przyczyną błędów TLS przy pierwszym kontakcie z aur.archlinux.org
     sudo timedatectl set-ntp true &>/dev/null || true
 
     rm -rf /tmp/yay
     if ! retry_cmd 5 git clone https://aur.archlinux.org/yay.git /tmp/yay; then
-        log_warn "Klonowanie przez git nie powiodło się, próbuję pobrać archiwum tar.gz..." \
-                 "git clone failed, trying to download the tar.gz archive instead..."
         rm -rf /tmp/yay
         mkdir -p /tmp/yay
         if ! retry_cmd 5 curl -4 -fsSL \
@@ -364,11 +351,6 @@ CMDLINE="quiet splash loglevel=3 vt.global_cursor_default=0"
 
 BOOT_METHODS_FOUND=()
 
-# Wykrywa RZECZYWISTE ścieżki ESP/XBOOTLDR zamiast zgadywać na sztywno
-# /boot i /efi. Bez tego np. ESP zamontowane w /boot/efi powodowało, że
-# loader.conf/entries/UKI nigdy nie były znajdowane, więc menu bootloadera
-# się nie chowało, a "splash" nigdy nie trafiał do cmdline (stąd brak
-# plymoutha).
 declare -a LOADER_ROOTS=()
 if command -v bootctl &>/dev/null; then
     for p in "$(bootctl --print-esp-path 2>/dev/null || true)" \
@@ -379,27 +361,18 @@ fi
 for p in /boot /efi /boot/efi; do
     [ -d "$p" ] && LOADER_ROOTS+=("$p")
 done
-# usuń duplikaty, zachowując kolejność
+
 if [ ${#LOADER_ROOTS[@]} -gt 0 ]; then
     readarray -t LOADER_ROOTS < <(printf '%s\n' "${LOADER_ROOTS[@]}" | awk '!seen[$0]++')
 fi
 log_info "Wykryte katalogi loadera (ESP/XBOOTLDR): ${LOADER_ROOTS[*]:-brak}" \
          "Detected loader directories (ESP/XBOOTLDR): ${LOADER_ROOTS[*]:-none}"
 
-# /boot bywa zamontowane z fmask/dmask, które blokują zwykłemu użytkownikowi
-# nawet wejście do katalogu (np. "fmask=0077,dmask=0077" bez uid=). Zwykłe
-# "[ -f ... ]"/"grep" bez sudo wtedy po cichu "nie widzą" plików (permission
-# denied wygląda dla basha identycznie jak "nie istnieje"), więc CAŁA
-# detekcja i modyfikacja bootloadera nic nie robiła mimo że pliki tam były.
-# Dlatego wszystkie odczyty pod ścieżkami loadera idą teraz przez sudo.
 broot_f() { sudo test -f "$1" 2>/dev/null; }
 broot_d() { sudo test -d "$1" 2>/dev/null; }
 grep() { sudo grep "$@" 2>/dev/null; }
 broot_glob_first() { sudo find "$1" -maxdepth 1 -iname "$2" -print -quit 2>/dev/null; }
 
-# Ustawienia GRUB-a, systemd-boot, Limine i rEFInd (niżej) są niezależne od
-# tego, czy wykryto UKI - każdy z nich konfigurowany jest zawsze, gdy jego
-# plik konfiguracyjny istnieje w systemie.
 UKI_EFI_FOUND=false
 for r in "${LOADER_ROOTS[@]}"; do
     if [ -n "$(broot_glob_first "$r/EFI/Linux" '*.efi')" ]; then
@@ -441,7 +414,6 @@ if command -v bootctl &>/dev/null && [ "$SYSTEMD_BOOT_DETECTED" = true ]; then
             done
         fi
     done
-    # Ustawia też timeout menu bootloadera zapisany w zmiennych NVRAM (dotyczy też wpisów UKI)
     sudo bootctl set-timeout 0 &>/dev/null || true
 fi
 
@@ -461,7 +433,6 @@ done
 if [ -n "$LIMINE_CONF" ]; then
     BOOT_METHODS_FOUND+=("limine")
     if [[ "$LIMINE_CONF" == *.conf ]]; then
-        # nowy format (key: value)
         if grep -qE '^timeout:' "$LIMINE_CONF"; then
             sudo sed -i -E 's/^timeout:.*/timeout: 0/' "$LIMINE_CONF"
         else
@@ -469,7 +440,6 @@ if [ -n "$LIMINE_CONF" ]; then
         fi
         sudo sed -i -E "/^[[:space:]]*cmdline:/{/splash/!s/\$/ $CMDLINE/}" "$LIMINE_CONF"
     else
-        # stary format (KEY=value)
         if grep -qE '^TIMEOUT=' "$LIMINE_CONF"; then
             sudo sed -i -E 's/^TIMEOUT=.*/TIMEOUT=0/' "$LIMINE_CONF"
         else
@@ -501,7 +471,6 @@ if [ -n "$REFIND_CONF" ]; then
         fi
     fi
 
-    # refind_linux.conf: wiersze w formacie "Etykieta" "opcje jądra"
     for rl_conf in /boot/refind_linux.conf /efi/refind_linux.conf \
                    /boot/EFI/Linux/refind_linux.conf /efi/EFI/Linux/refind_linux.conf; do
         broot_f "$rl_conf" || continue
@@ -509,10 +478,7 @@ if [ -n "$REFIND_CONF" ]; then
     done
 fi
 
-# --- EFISTUB (jądro bootowane bezpośrednio przez UEFI, bez menedżera rozruchu) ---
-# W przeciwieństwie do UKI (jeden plik .efi = jądro+initrd+cmdline), klasyczny
-# EFISTUB to wpis NVRAM wskazujący wprost na osobny plik vmlinuz-*, z opcjami
-# jądra zapisanymi w danych wpisu (bez żadnego pliku konfiguracyjnego).
+# --- EFISTUB ---
 EFISTUB_FOUND=false
 if command -v efibootmgr &>/dev/null; then
     re_boot_line='^Boot([0-9A-Fa-f]{4})\*?[[:space:]]*(.*)$'
@@ -525,7 +491,6 @@ if command -v efibootmgr &>/dev/null; then
         [[ "$rest" =~ $re_file_node ]] || continue
         loader_path="${BASH_REMATCH[1]}"
         cmdline_data="${BASH_REMATCH[2]}"
-        # pomijamy wpisy UKI (.efi w /EFI/Linux) oraz wpisy innych menedżerów (.efi gdziekolwiek)
         [[ "$loader_path" == *.efi || "$loader_path" == *.EFI ]] && continue
         [[ "$loader_path" =~ [Vv][Mm][Ll][Ii][Nn][Uu][Zz] ]] || continue
 
@@ -562,8 +527,6 @@ if command -v efibootmgr &>/dev/null; then
 fi
 [ "$EFISTUB_FOUND" = true ] && BOOT_METHODS_FOUND+=("efistub")
 
-# Czysty UKI/EFISTUB bootowany bezpośrednio z UEFI (bez systemd-boot/GRUB/Limine/rEFInd) -
-# czas oczekiwania menu firmware'u ustawiany jest w NVRAM, a nie w pliku
 if [[ " ${BOOT_METHODS_FOUND[*]} " != *" systemd-boot "* ]] && \
    [[ " ${BOOT_METHODS_FOUND[*]} " != *" grub "* ]] && \
    [[ " ${BOOT_METHODS_FOUND[*]} " != *" limine "* ]] && \
@@ -576,6 +539,7 @@ show_progress 10 $TOTAL_STEPS "$MSG_PHASE_3"
 
 if [ ${#BOOT_METHODS_FOUND[@]} -gt 0 ]; then
     METHODS_JOINED="$(IFS=', '; echo "${BOOT_METHODS_FOUND[*]}")"
+    printf '\r\033[K' >&3
     if [[ "$SCRIPT_LANG" == "pl" ]]; then
         echo -e "${INFO}==> Wykryte i skonfigurowane metody rozruchu: ${METHODS_JOINED}${NC}" >&3
     else
@@ -622,37 +586,20 @@ for preset in /etc/mkinitcpio.d/*.preset; do
     [ -f "$preset" ] && sudo sed -i 's/--splash [^ "]*//g' "$preset"
 done
 
-# Hook plymoutha zależy od typu initramfs: sd-plymouth dla hooków systemd,
-# plymouth dla klasycznych hooków udev. Wcześniejsza wersja szukała tylko
-# "udev", więc przy hookach systemd (częste przy UKI) plymouth nigdy się
-# nie dodawał i ekran powitalny się nie pojawiał.
-#
-# WAŻNE: hook plymoutha MUSI być dodany PO hooku "kms" (zgodnie z Arch Wiki) -
-# to kms konfiguruje tryb graficzny konsoli (KMS/DRM), z którego korzysta
-# Plymouth. Jeśli plymouth wystartuje przed kms, urządzenie DRM nie jest
-# jeszcze gotowe i Plymouth po cichu przechodzi w tryb tekstowy ("details"),
-# mimo poprawnie ustawionego motywu graficznego.
 if ! grep -qE '^HOOKS=.*(^|[[:space:]])(sd-plymouth|plymouth)([[:space:]]|\))' /etc/mkinitcpio.conf; then
     if grep -qE '^HOOKS=.*(^|[[:space:]])kms([[:space:]]|\))' /etc/mkinitcpio.conf; then
-        # kms już jest w HOOKS - wstaw plymouth zaraz po nim
         if grep -qE '^HOOKS=.*(^|[[:space:]])systemd([[:space:]]|\))' /etc/mkinitcpio.conf; then
             sudo sed -i '/^HOOKS=/ s/\bkms\b/kms sd-plymouth/' /etc/mkinitcpio.conf
         else
             sudo sed -i '/^HOOKS=/ s/\bkms\b/kms plymouth/' /etc/mkinitcpio.conf
         fi
     elif grep -qE '^HOOKS=.*(^|[[:space:]])systemd([[:space:]]|\))' /etc/mkinitcpio.conf; then
-        # brak kms, ale są hooki systemd - dodaj kms i sd-plymouth po systemd
         sudo sed -i '/^HOOKS=/ s/\bsystemd\b/systemd kms sd-plymouth/' /etc/mkinitcpio.conf
     else
-        # brak kms, klasyczne hooki udev - dodaj kms i plymouth po udev
         sudo sed -i '/^HOOKS=/ s/\budev\b/udev kms plymouth/' /etc/mkinitcpio.conf
     fi
 fi
 
-# Wykrywanie i naprawa kolizji nazw plików UKI między różnymi kernelami.
-# Jeśli np. linux.preset i linux-zen.preset wskazują na ten sam plik .efi
-# (default_uki/fallback_uki), przy każdym "mkinitcpio -P" jeden kernel
-# nadpisuje UKI drugiego i realnie tylko jeden z nich jest bootowalny.
 fix_uki_collisions() {
     local -A seen_uki=()
     local preset kname uki_key line uki_path new_path suffix
@@ -668,8 +615,6 @@ fix_uki_collisions() {
                 suffix=""
                 [[ "$uki_key" == "fallback_uki" ]] && suffix="-fallback"
                 new_path="$(dirname "$uki_path")/arch-${kname}${suffix}.efi"
-                log_warn "Wykryto kolizję nazw UKI ($uki_path) między kernelami - naprawiam dla '$kname' -> $new_path" \
-                         "Detected UKI filename collision ($uki_path) between kernels - fixing for '$kname' -> $new_path"
                 sudo sed -i "s#^${uki_key}=.*#${uki_key}=\"${new_path}\"#" "$preset"
                 seen_uki["$new_path"]="$kname"
             else
@@ -680,8 +625,6 @@ fix_uki_collisions() {
 }
 fix_uki_collisions
 
-# -P przebudowuje initramfs/UKI dla WSZYSTKICH zainstalowanych kerneli
-# (linux, linux-lts, linux-zen), bazując na plikach w /etc/mkinitcpio.d/
 sudo mkinitcpio -P
 
 show_progress 11 $TOTAL_STEPS "$MSG_PHASE_3"
