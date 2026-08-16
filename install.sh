@@ -394,7 +394,7 @@ log_info "Wykryte katalogi loadera (ESP/XBOOTLDR): ${LOADER_ROOTS[*]:-brak}" \
 # Dlatego wszystkie odczyty pod ścieżkami loadera idą teraz przez sudo.
 broot_f() { sudo test -f "$1" 2>/dev/null; }
 broot_d() { sudo test -d "$1" 2>/dev/null; }
-broot_grep() { sudo grep "$@" 2>/dev/null; }
+grep() { sudo grep "$@" 2>/dev/null; }
 broot_glob_first() { sudo find "$1" -maxdepth 1 -iname "$2" -print -quit 2>/dev/null; }
 
 # Ustawienia GRUB-a, systemd-boot, Limine i rEFInd (niżej) są niezależne od
@@ -426,7 +426,7 @@ if command -v bootctl &>/dev/null && [ "$SYSTEMD_BOOT_DETECTED" = true ]; then
     for loader_root in "${LOADER_ROOTS[@]}"; do
         if broot_d "$loader_root/loader/entries"; then
             if broot_f "$loader_root/loader/loader.conf"; then
-                if broot_grep -q '^timeout ' "$loader_root/loader/loader.conf"; then
+                if grep -q '^timeout ' "$loader_root/loader/loader.conf"; then
                     sudo sed -i 's/^timeout .*/timeout 0/' "$loader_root/loader/loader.conf"
                 else
                     echo "timeout 0" | sudo tee -a "$loader_root/loader/loader.conf" >/dev/null
@@ -434,7 +434,7 @@ if command -v bootctl &>/dev/null && [ "$SYSTEMD_BOOT_DETECTED" = true ]; then
             fi
 
             for entry in $(sudo find "$loader_root/loader/entries" -maxdepth 1 -iname '*.conf' 2>/dev/null); do
-                if ! broot_grep -qw "splash" "$entry"; then
+                if ! grep -qw "splash" "$entry"; then
                     sudo sed -i "/^options/ s/\$/ $CMDLINE/" "$entry"
                     sudo sed -i 's/  */ /g' "$entry"
                 fi
@@ -462,7 +462,7 @@ if [ -n "$LIMINE_CONF" ]; then
     BOOT_METHODS_FOUND+=("limine")
     if [[ "$LIMINE_CONF" == *.conf ]]; then
         # nowy format (key: value)
-        if broot_grep -qE '^timeout:' "$LIMINE_CONF"; then
+        if grep -qE '^timeout:' "$LIMINE_CONF"; then
             sudo sed -i -E 's/^timeout:.*/timeout: 0/' "$LIMINE_CONF"
         else
             echo "timeout: 0" | sudo tee -a "$LIMINE_CONF" >/dev/null
@@ -470,7 +470,7 @@ if [ -n "$LIMINE_CONF" ]; then
         sudo sed -i -E "/^[[:space:]]*cmdline:/{/splash/!s/\$/ $CMDLINE/}" "$LIMINE_CONF"
     else
         # stary format (KEY=value)
-        if broot_grep -qE '^TIMEOUT=' "$LIMINE_CONF"; then
+        if grep -qE '^TIMEOUT=' "$LIMINE_CONF"; then
             sudo sed -i -E 's/^TIMEOUT=.*/TIMEOUT=0/' "$LIMINE_CONF"
         else
             echo "TIMEOUT=0" | sudo tee -a "$LIMINE_CONF" >/dev/null
@@ -494,7 +494,7 @@ if [ -n "$REFIND_CONF" ]; then
         broot_f "$candidate" && { REFIND_MAIN_CONF="$candidate"; break; }
     done
     if [ -n "$REFIND_MAIN_CONF" ]; then
-        if broot_grep -qE '^timeout[[:space:]]' "$REFIND_MAIN_CONF"; then
+        if grep -qE '^timeout[[:space:]]' "$REFIND_MAIN_CONF"; then
             sudo sed -i -E 's/^timeout[[:space:]].*/timeout 0/' "$REFIND_MAIN_CONF"
         else
             echo "timeout 0" | sudo tee -a "$REFIND_MAIN_CONF" >/dev/null
@@ -626,13 +626,59 @@ done
 # plymouth dla klasycznych hooków udev. Wcześniejsza wersja szukała tylko
 # "udev", więc przy hookach systemd (częste przy UKI) plymouth nigdy się
 # nie dodawał i ekran powitalny się nie pojawiał.
-if ! broot_grep -qE '^HOOKS=.*(^|[[:space:]])(sd-plymouth|plymouth)([[:space:]]|\))' /etc/mkinitcpio.conf; then
-    if broot_grep -qE '^HOOKS=.*(^|[[:space:]])systemd([[:space:]]|\))' /etc/mkinitcpio.conf; then
-        sudo sed -i '/^HOOKS=/ s/\bsystemd\b/systemd sd-plymouth/' /etc/mkinitcpio.conf
+#
+# WAŻNE: hook plymoutha MUSI być dodany PO hooku "kms" (zgodnie z Arch Wiki) -
+# to kms konfiguruje tryb graficzny konsoli (KMS/DRM), z którego korzysta
+# Plymouth. Jeśli plymouth wystartuje przed kms, urządzenie DRM nie jest
+# jeszcze gotowe i Plymouth po cichu przechodzi w tryb tekstowy ("details"),
+# mimo poprawnie ustawionego motywu graficznego.
+if ! grep -qE '^HOOKS=.*(^|[[:space:]])(sd-plymouth|plymouth)([[:space:]]|\))' /etc/mkinitcpio.conf; then
+    if grep -qE '^HOOKS=.*(^|[[:space:]])kms([[:space:]]|\))' /etc/mkinitcpio.conf; then
+        # kms już jest w HOOKS - wstaw plymouth zaraz po nim
+        if grep -qE '^HOOKS=.*(^|[[:space:]])systemd([[:space:]]|\))' /etc/mkinitcpio.conf; then
+            sudo sed -i '/^HOOKS=/ s/\bkms\b/kms sd-plymouth/' /etc/mkinitcpio.conf
+        else
+            sudo sed -i '/^HOOKS=/ s/\bkms\b/kms plymouth/' /etc/mkinitcpio.conf
+        fi
+    elif grep -qE '^HOOKS=.*(^|[[:space:]])systemd([[:space:]]|\))' /etc/mkinitcpio.conf; then
+        # brak kms, ale są hooki systemd - dodaj kms i sd-plymouth po systemd
+        sudo sed -i '/^HOOKS=/ s/\bsystemd\b/systemd kms sd-plymouth/' /etc/mkinitcpio.conf
     else
-        sudo sed -i '/^HOOKS=/ s/\budev\b/udev plymouth/' /etc/mkinitcpio.conf
+        # brak kms, klasyczne hooki udev - dodaj kms i plymouth po udev
+        sudo sed -i '/^HOOKS=/ s/\budev\b/udev kms plymouth/' /etc/mkinitcpio.conf
     fi
 fi
+
+# Wykrywanie i naprawa kolizji nazw plików UKI między różnymi kernelami.
+# Jeśli np. linux.preset i linux-zen.preset wskazują na ten sam plik .efi
+# (default_uki/fallback_uki), przy każdym "mkinitcpio -P" jeden kernel
+# nadpisuje UKI drugiego i realnie tylko jeden z nich jest bootowalny.
+fix_uki_collisions() {
+    local -A seen_uki=()
+    local preset kname uki_key line uki_path new_path suffix
+    for preset in /etc/mkinitcpio.d/*.preset; do
+        [ -f "$preset" ] || continue
+        kname="$(basename "$preset" .preset)"
+        for uki_key in default_uki fallback_uki; do
+            line="$(grep -E "^${uki_key}=" "$preset" 2>/dev/null || true)"
+            [ -z "$line" ] && continue
+            uki_path="$(sed -E "s/^${uki_key}=\"?([^\"]*)\"?.*/\1/" <<<"$line")"
+            [ -z "$uki_path" ] && continue
+            if [ -n "${seen_uki[$uki_path]:-}" ] && [ "${seen_uki[$uki_path]}" != "$kname" ]; then
+                suffix=""
+                [[ "$uki_key" == "fallback_uki" ]] && suffix="-fallback"
+                new_path="$(dirname "$uki_path")/arch-${kname}${suffix}.efi"
+                log_warn "Wykryto kolizję nazw UKI ($uki_path) między kernelami - naprawiam dla '$kname' -> $new_path" \
+                         "Detected UKI filename collision ($uki_path) between kernels - fixing for '$kname' -> $new_path"
+                sudo sed -i "s#^${uki_key}=.*#${uki_key}=\"${new_path}\"#" "$preset"
+                seen_uki["$new_path"]="$kname"
+            else
+                seen_uki["$uki_path"]="$kname"
+            fi
+        done
+    done
+}
+fix_uki_collisions
 
 # -P przebudowuje initramfs/UKI dla WSZYSTKICH zainstalowanych kerneli
 # (linux, linux-lts, linux-zen), bazując na plikach w /etc/mkinitcpio.d/
