@@ -539,11 +539,10 @@ show_progress 10 $TOTAL_STEPS "$MSG_PHASE_3"
 
 if [ ${#BOOT_METHODS_FOUND[@]} -gt 0 ]; then
     METHODS_JOINED="$(IFS=', '; echo "${BOOT_METHODS_FOUND[*]}")"
-    printf '\r\033[K' >&3
     if [[ "$SCRIPT_LANG" == "pl" ]]; then
-        echo -e "${INFO}==> Wykryte i skonfigurowane metody rozruchu: ${METHODS_JOINED}${NC}" >&3
+        echo -e "${INFO}==> Wykryte i skonfigurowane metody rozruchu: ${METHODS_JOINED}${NC}"
     else
-        echo -e "${INFO}==> Detected and configured boot methods: ${METHODS_JOINED}${NC}" >&3
+        echo -e "${INFO}==> Detected and configured boot methods: ${METHODS_JOINED}${NC}"
     fi
 fi
 
