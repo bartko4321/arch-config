@@ -209,11 +209,11 @@ fi
 
 show_progress 1 $TOTAL_STEPS "$MSG_PHASE_1"
 
-PACKAGES_TO_REMOVE="htop nano konqueror plasma-browser-integration plasma-vault krdp xarchiver krfb plasma-thunderbolt zbar ristretto kontact kmail kontrast plasma-welcome imagemagick kaddressbook kdepim-runtime akonadi-server akregator korganizer gnome-software epiphany decibels rhythmbox showtime cosmic-store cosmic-player parole kwalletmanager"
+PACKAGES_TO_REMOVE="htop nano konqueror plasma-browser-integration plasma-vault krdp xarchiver krfb plasma-thunderbolt zbar ristretto kontact kmail kontrast plasma-welcome imagemagick kaddressbook kdepim-runtime akonadi-server akregator korganizer gnome-software epiphany decibels rhythmbox showtime cosmic-store cosmic-player parole gnome-music gnome-user-docs gnome-contacts gnome-maps gnome-weather loupe papers gnome-text-editor yelp kwalletmanager"
 INSTALLED_PACKAGES=$(pacman -Qq $PACKAGES_TO_REMOVE 2>/dev/null || true)
-if [ -n "$INSTALLED_PACKAGES" ]; then
-    sudo pacman -Rs --noconfirm $INSTALLED_PACKAGES 2>/dev/null || true
-fi
+for pkg in $INSTALLED_PACKAGES; do
+    sudo pacman -Rs --noconfirm "$pkg" 2>/dev/null || true
+done
 
 mkdir -p ~/.config
 if [[ -f ~/.config/kwalletrc ]]; then
@@ -275,7 +275,7 @@ SYSTEM_PKGS=(
     bluez-obex appmenu-gtk-module libayatana-appindicator flatpak timeshift
     thunderbird thunderbird-i18n-pl zsh-syntax-highlighting zsh-autosuggestions
     vlc vlc-plugins-all libappimage handbrake
-    krita krita-plugin-gmic gimp gmic
+    krita krita-plugin-gmic gimp gmic kate
     audacity qmmp mixxx kdenlive soundconverter
     gst-plugins-good gst-plugins-bad gst-plugins-ugly
     discord telegram-desktop qbittorrent firefox-developer-edition firefox-developer-edition-i18n-pl
@@ -484,9 +484,9 @@ if [ -n "$REFIND_CONF" ]; then
     done
     if [ -n "$REFIND_MAIN_CONF" ]; then
         if grep -qE '^timeout[[:space:]]' "$REFIND_MAIN_CONF"; then
-            sudo sed -i -E 's/^timeout[[:space:]].*/timeout 0/' "$REFIND_MAIN_CONF"
+            sudo sed -i -E 's/^timeout[[:space:]].*/timeout -1/' "$REFIND_MAIN_CONF"
         else
-            echo "timeout 0" | sudo tee -a "$REFIND_MAIN_CONF" >/dev/null
+            echo "timeout -1" | sudo tee -a "$REFIND_MAIN_CONF" >/dev/null
         fi
     fi
 
