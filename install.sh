@@ -135,9 +135,9 @@ install_pacman_pkgs() {
             valid_pkgs+=("$pkg")
         fi
     done
-    if [ ${#valid_pkgs[@]} -gt 0 ]; then
-        sudo pacman -S --noconfirm --needed "${valid_pkgs[@]}"
-    fi
+    for pkg in "${valid_pkgs[@]}"; do
+        sudo pacman -S --noconfirm --needed "$pkg" || true
+    done
 }
 
 install_yay_pkgs() {
@@ -147,9 +147,9 @@ install_yay_pkgs() {
             valid_pkgs+=("$pkg")
         fi
     done
-    if [ ${#valid_pkgs[@]} -gt 0 ]; then
-        yay -S --noconfirm --needed "${valid_pkgs[@]}"
-    fi
+    for pkg in "${valid_pkgs[@]}"; do
+        yay -S --noconfirm --needed "$pkg" || true
+    done
 }
 
 retry_cmd() {
@@ -180,7 +180,9 @@ if command -v lspci &>/dev/null; then
 
     if [ -z "$GPU_INFO" ] || [ "$TOTAL_KNOWN" -eq 0 ]; then
         HYBRID_GPU=false
-        sudo pacman -S --needed --noconfirm lib32-mesa lib32-vulkan-mesa-layers lib32-vulkan-icd-loader
+        for pkg in lib32-mesa lib32-vulkan-mesa-layers lib32-vulkan-icd-loader; do
+            sudo pacman -S --needed --noconfirm "$pkg" || true
+        done
     elif [ "$TOTAL_KNOWN" -ge 2 ]; then
         HYBRID_GPU=true
         GPU_TYPE="$(IFS=+; echo "${GPU_VENDORS[*]}")"
@@ -189,7 +191,9 @@ if command -v lspci &>/dev/null; then
         GPU_TYPE="${GPU_VENDORS[0]}"
     fi
 else
-    sudo pacman -S --needed --noconfirm lib32-mesa lib32-vulkan-mesa-layers lib32-vulkan-icd-loader
+    for pkg in lib32-mesa lib32-vulkan-mesa-layers lib32-vulkan-icd-loader; do
+        sudo pacman -S --needed --noconfirm "$pkg" || true
+    done
 fi
 
 if [ -f "$SCRIPT_DIR/.update.sh" ]; then
@@ -247,7 +251,7 @@ fi
 if ! grep -q "NoExtract = usr/share/man" /etc/pacman.conf; then
     sudo sed -i '/NoExtract = usr\/share\/cups\/doc/a NoExtract = usr/share/man/*\nNoExtract = usr/share/doc/*\nNoExtract = usr/share/info/*\nNoExtract = usr/share/gtk-doc/*\nNoExtract = usr/share/help/*' /etc/pacman.conf
 fi
-sudo pacman -S --noconfirm cups
+sudo pacman -S --noconfirm cups || true
 
 sudo mkdir -p /etc/NetworkManager/conf.d
 echo -e "[main]\ndns=default\nrc-manager=symlink" | sudo tee /etc/NetworkManager/conf.d/dns.conf > /dev/null
@@ -260,7 +264,7 @@ show_progress 3 $TOTAL_STEPS "$MSG_PHASE_1"
 # =============================================================
 show_progress 4 $TOTAL_STEPS "$MSG_PHASE_2"
 
-sudo pacman -Syu --noconfirm
+sudo pacman -Syu --noconfirm || true
 
 show_progress 5 $TOTAL_STEPS "$MSG_PHASE_2"
 
@@ -307,8 +311,8 @@ sudo depmod -a &>/dev/null || true
 
 show_progress 6 $TOTAL_STEPS "$MSG_PHASE_2"
 
-sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-sudo flatpak update --appstream
+sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || true
+sudo flatpak update --appstream || true
 sudo flatpak install -y flathub com.github.tchx84.Flatseal || true
 sudo flatpak install -y flathub it.mijorus.gearlever || true
 
@@ -329,10 +333,10 @@ if ! command -v yay &>/dev/null; then
         tar -xzf /tmp/yay.tar.gz -C /tmp/yay --strip-components=1
         rm -f /tmp/yay.tar.gz
     fi
-    (cd /tmp/yay && makepkg -si --noconfirm)
+    (cd /tmp/yay && makepkg -si --noconfirm) || true
 fi
 
-yay --save --cleanafter --cleanmenu=false --diffmenu=false --editmenu=false
+yay --save --cleanafter --cleanmenu=false --diffmenu=false --editmenu=false || true
 
 AUR_PKGS=(ventoy-bin lsfg-vk-bin google-chrome brave-origin-bin faugus-launcher shelly-bin dmemcg-booster needrestart makeself)
 install_yay_pkgs "${AUR_PKGS[@]}"
@@ -634,7 +638,7 @@ fix_uki_collisions() {
 }
 fix_uki_collisions
 
-sudo mkinitcpio -P
+sudo mkinitcpio -P || true
 
 if [ ${#LIMINE_CONFS[@]} -gt 0 ] && pacman -Qq limine-mkinitcpio-hook &>/dev/null; then
     for candidate in /boot/limine.conf /efi/limine.conf \
