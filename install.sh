@@ -355,7 +355,7 @@ show_progress 8 $TOTAL_STEPS "$MSG_PHASE_2"
 # =============================================================
 show_progress 9 $TOTAL_STEPS "$MSG_PHASE_3"
 
-CMDLINE="quiet splash loglevel=3 vt.global_cursor_default=0"
+CMDLINE="quiet splash loglevel=3 vt.global_cursor_default=0 plymouth.ignore-serial-consoles"
 [[ $GPU_TYPE == *"nvidia"* ]] && CMDLINE="$CMDLINE nvidia_drm.modeset=1"
 
 BOOT_METHODS_FOUND=()
