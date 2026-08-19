@@ -26,7 +26,7 @@ This project contains a comprehensive Bash shell script (`install.sh`) designed 
 
 1. Clone the repository to your disk
    ```bash
-   git clone https://github.com/bartko4321/arch-config.git
+   git clone https://github.com/syscore88/arch-config.git
    ```
 
 2. Navigate to the folder
