@@ -213,7 +213,7 @@ fi
 
 show_progress 1 $TOTAL_STEPS "$MSG_PHASE_1"
 
-PACKAGES_TO_REMOVE="htop nano konqueror plasma-browser-integration plasma-vault krdp xarchiver krfb plasma-thunderbolt zbar ristretto kontact kmail kontrast plasma-welcome imagemagick kaddressbook kdepim-runtime akonadi-server akregator korganizer gnome-software epiphany decibels rhythmbox showtime cosmic-store cosmic-player parole gnome-calendar gnome-clocks gnome-music gnome-user-docs gnome-contacts gnome-maps gnome-weather loupe papers gnome-text-editor yelp kwalletmanager"
+PACKAGES_TO_REMOVE="htop nano konqueror plasma-browser-integration plasma-vault krdp xarchiver krfb plasma-thunderbolt zbar ristretto kontact kmail kontrast plasma-welcome imagemagick kaddressbook kdepim-runtime akonadi-server akregator korganizer gnome-software epiphany decibels rhythmbox showtime cosmic-store cosmic-player parole gnome-calendar gnome-clocks gnome-music gnome-user-docs gnome-contacts gnome-maps gnome-weather loupe papers gnome-text-editor yelp evolution evolution-common evolution-plugins evolution-ews kwalletmanager"
 INSTALLED_PACKAGES=$(pacman -Qq $PACKAGES_TO_REMOVE 2>/dev/null || true)
 for pkg in $INSTALLED_PACKAGES; do
     sudo pacman -Rs --noconfirm "$pkg" 2>/dev/null || true
@@ -222,9 +222,9 @@ done
 rm -rf ~/.local/share/akonadi ~/.local/share/kmail2 ~/.local/share/local-mail ~/.local/share/contacts ~/.local/share/korganizer ~/.local/share/akregator ~/.local/share/kontact
 rm -rf ~/.config/akonadi* ~/.config/kmail* ~/.config/kontact* ~/.config/korganizer* ~/.config/kaddressbook* ~/.config/akregator* ~/.config/emailidentities ~/.config/mailtransports
 rm -rf ~/.cache/akonadi* ~/.cache/kmail* ~/.cache/kontact* ~/.cache/korganizer* ~/.cache/kaddressbook* ~/.cache/akregator* ~/.cache/konqueror*
-rm -rf ~/.local/share/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,loupe,papers,gnome-text-editor,yelp}
-rm -rf ~/.config/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,loupe,papers,gnome-text-editor,yelp}
-rm -rf ~/.cache/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,loupe,papers,gnome-text-editor,yelp}
+rm -rf ~/.local/share/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,loupe,papers,gnome-text-editor,yelp,evolution}
+rm -rf ~/.config/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,loupe,papers,gnome-text-editor,yelp,evolution}
+rm -rf ~/.cache/{gnome-software,epiphany,decibels,rhythmbox,showtime,parole,gnome-calendar,gnome-clocks,gnome-music,gnome-contacts,gnome-maps,gnome-weather,loupe,papers,gnome-text-editor,yelp,evolution}
 
 mkdir -p ~/.config
 if [[ -f ~/.config/kwalletrc ]]; then
