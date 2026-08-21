@@ -6,7 +6,7 @@
   "AurWarningConfirmed": true,
   "AppImageEnabled": true,
   "AppImageInstallPath": "",
-  "FlatPackEnabled": true,
+  "FlatPackEnabled": false,
   "PackageDowngradeEnabled": false,
   "RecommendedEnabled": false,
   "ShellyIconsEnabled": true,
